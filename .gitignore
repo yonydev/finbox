@@ -1,0 +1,6 @@
+# Claude Code personal overrides
+.claude/settings.local.json
+
+# oh-my-claudecode runtime state (project-scoped skills stay committable)
+.omc/
+!.omc/skills/
