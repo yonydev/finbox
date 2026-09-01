@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	_ "time/tzdata"
 )
@@ -28,7 +29,16 @@ func subcommands() []subcommand {
 		{"help", "show help", cmdHelp},
 		{"extract", "extrae un ticket local (Milestone 0)", cmdExtract},
 		{"migrate", "aplica migraciones", cmdMigrate},
+		{"list", "lista gastos recientes", cmdList},
+		{"edit", "edita un gasto", cmdEdit},
+		{"void", "anula un gasto", cmdVoid},
+		{"reprocess", "reprocesa un recibo", cmdReprocess},
 	}
+}
+
+// logger returns a JSON slog.Logger writing to stderr, for pipeline.Deps.Log.
+func logger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
 }
 
 func run(argv []string, stdout, stderr io.Writer) int {
