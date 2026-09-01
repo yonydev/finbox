@@ -2,6 +2,7 @@ package money
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -50,7 +51,12 @@ func ParseMinor(s, currency string) (int64, error) {
 		if r < '0' || r > '9' {
 			return 0, fmt.Errorf("monto inválido: %q", s)
 		}
-		n = n*10 + int64(r-'0')
+		digit := int64(r - '0')
+		// Overflow guard: check if n*10 + digit would exceed MaxInt64
+		if n > (math.MaxInt64-digit)/10 {
+			return 0, fmt.Errorf("monto demasiado grande")
+		}
+		n = n*10 + digit
 	}
 	if neg {
 		n = -n

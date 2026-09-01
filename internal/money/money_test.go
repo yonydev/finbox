@@ -20,6 +20,8 @@ func TestParseMinor(t *testing.T) {
 		{"12a", "MXN", 0, true},
 		{"1,200.00", "MXN", 120000, false}, // thousands separators tolerated
 		{"$364.00", "MXN", 36400, false},   // currency symbol tolerated
+		{"1234567890123456789012345", "MXN", 0, true}, // 25 digits overflow
+		{"922337203685477580.07", "MXN", 0, true},     // exceeds max int64
 	}
 	for _, tc := range cases {
 		got, err := ParseMinor(tc.in, tc.cur)
