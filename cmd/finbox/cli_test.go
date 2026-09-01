@@ -47,6 +47,18 @@ func TestCLIListJSON(t *testing.T) {
 	}
 }
 
+func TestCLIUnknownFlagJSONError(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := run([]string{"finbox", "list", "--json", "--nope"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 (stderr: %s)", code, errb.String())
+	}
+	var e map[string]string
+	if err := json.Unmarshal(errb.Bytes(), &e); err != nil || e["error"] == "" {
+		t.Fatalf("stderr should be JSON {\"error\":...}, got %q (err: %v)", errb.String(), err)
+	}
+}
+
 func TestCLIEditNotFoundExit3(t *testing.T) {
 	_, _ = cliStore(t)
 	t.Setenv("FINBOX_DB_URL", os.Getenv("TEST_DB_URL"))

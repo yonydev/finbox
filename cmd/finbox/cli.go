@@ -68,6 +68,32 @@ func popID(argv []string) (string, []string) {
 	return "", argv
 }
 
+// hasJSONFlag scans the raw (unparsed) argv for --json/-json. Used only when
+// flag.Parse itself failed, so the *bool a normal fsx.Bool("json", ...) would
+// give us can't be trusted — parsing never got that far.
+func hasJSONFlag(argv []string) bool {
+	for _, a := range argv {
+		if a == "--json" || a == "-json" {
+			return true
+		}
+	}
+	return false
+}
+
+// parseFlags parses argv with fsx, discarding flag's own plain-text error
+// output, and instead reports a parse failure through cliErr so the --json
+// contract (errors as {"error":...} on stderr) holds even when parsing
+// itself fails, e.g. an unknown flag. Returns false on error; callers should
+// return exitUsage in that case.
+func parseFlags(fsx *flag.FlagSet, argv []string, stderr io.Writer) bool {
+	fsx.SetOutput(io.Discard)
+	if err := fsx.Parse(argv); err != nil {
+		cliErr(stderr, hasJSONFlag(argv), err.Error())
+		return false
+	}
+	return true
+}
+
 type txnJSON struct {
 	ID          string `json:"id"`
 	ShortID     string `json:"short_id"`
@@ -85,11 +111,10 @@ func toJSON(r store.TxnRow) txnJSON {
 
 func cmdList(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("list", flag.ContinueOnError)
-	fsx.SetOutput(stderr)
 	limit := fsx.Int("limit", 10, "máx. de filas")
 	month := fsx.String("month", "", "mes: aug | ago | 2026-08")
 	asJSON := fsx.Bool("json", false, "salida JSON")
-	if err := fsx.Parse(argv); err != nil {
+	if !parseFlags(fsx, argv, stderr) {
 		return exitUsage
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
@@ -115,14 +140,13 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 
 func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("edit", flag.ContinueOnError)
-	fsx.SetOutput(stderr)
 	total := fsx.String("total", "", "nuevo total, ej. 285.00")
 	merchant := fsx.String("merchant", "", "nuevo comercio")
 	date := fsx.String("date", "", "nueva fecha YYYY-MM-DD")
 	currency := fsx.String("currency", "", "nueva moneda ISO 4217")
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
-	if err := fsx.Parse(rest); err != nil {
+	if !parseFlags(fsx, rest, stderr) {
 		return exitUsage
 	}
 	if id == "" {
@@ -147,10 +171,9 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 
 func cmdVoid(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("void", flag.ContinueOnError)
-	fsx.SetOutput(stderr)
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
-	if err := fsx.Parse(rest); err != nil {
+	if !parseFlags(fsx, rest, stderr) {
 		return exitUsage
 	}
 	if id == "" {
@@ -176,10 +199,9 @@ func cmdVoid(argv []string, stdout, stderr io.Writer) int {
 
 func cmdReprocess(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("reprocess", flag.ContinueOnError)
-	fsx.SetOutput(stderr)
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
-	if err := fsx.Parse(rest); err != nil {
+	if !parseFlags(fsx, rest, stderr) {
 		return exitUsage
 	}
 	if id == "" {
