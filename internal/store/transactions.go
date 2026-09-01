@@ -121,6 +121,31 @@ func (s *Store) ListTransactions(ctx context.Context, limit, year int, month tim
 	return out, rows.Err()
 }
 
+const txnRowCols = `id, merchant, currency, source, coalesce(receipt_id::text,''), occurred_on, amount_minor`
+
+func scanTxnRow(row pgx.Row) (TxnRow, error) {
+	var r TxnRow
+	err := row.Scan(&r.ID, &r.Merchant, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return TxnRow{}, ErrNotFound
+	}
+	if err != nil {
+		return TxnRow{}, err
+	}
+	r.ShortID = r.ID[:8]
+	return r, nil
+}
+
+// GetTransactionByID returns the active (non-voided) transaction with the given id.
+func (s *Store) GetTransactionByID(ctx context.Context, id string) (TxnRow, error) {
+	return scanTxnRow(s.pool.QueryRow(ctx, `select `+txnRowCols+` from transactions where id=$1 and voided_at is null`, id))
+}
+
+// GetActiveTxnForReceipt returns the active (non-voided) transaction for a receipt, if any.
+func (s *Store) GetActiveTxnForReceipt(ctx context.Context, receiptID string) (TxnRow, error) {
+	return scanTxnRow(s.pool.QueryRow(ctx, `select `+txnRowCols+` from transactions where receipt_id=$1 and voided_at is null`, receiptID))
+}
+
 func (s *Store) MonthTotals(ctx context.Context, year int, month time.Month, loc *time.Location) ([]CurrencyTotal, int, error) {
 	from := time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	rows, err := s.pool.Query(ctx, `select currency, sum(amount_minor)::bigint, count(*) from transactions

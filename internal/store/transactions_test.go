@@ -108,6 +108,78 @@ func TestEditWritesLog(t *testing.T) {
 	}
 }
 
+func TestGetTransactionByID(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	day := time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)
+	_, txnID := confirmed(t, s, "sha-g1", 350, 1234, day)
+
+	tests := []struct {
+		name    string
+		id      string
+		wantErr error
+	}{
+		{"found", txnID, nil},
+		{"unknown id", "00000000-0000-0000-0000-000000000000", ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			row, err := s.GetTransactionByID(ctx, tt.id)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && (row.ID != txnID || row.AmountMinor != 1234) {
+				t.Fatalf("row = %+v", row)
+			}
+		})
+	}
+
+	if ok, err := s.VoidTransaction(ctx, txnID); err != nil || !ok {
+		t.Fatalf("void: %v %v", ok, err)
+	}
+	if _, err := s.GetTransactionByID(ctx, txnID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("voided txn: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestGetActiveTxnForReceipt(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	day := time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)
+	rID, txnID := confirmed(t, s, "sha-g2", 360, 2000, day)
+	r2, err := s.CreateReceipt(ctx, CreateReceiptParams{BlobKey: "k2", BlobSHA256: "sha-g3", TgMessageID: 361, TgChatID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		receiptID string
+		wantErr   error
+	}{
+		{"active txn", rID, nil},
+		{"receipt with no txn", r2.ID, ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			row, err := s.GetActiveTxnForReceipt(ctx, tt.receiptID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && row.ID != txnID {
+				t.Fatalf("row = %+v", row)
+			}
+		})
+	}
+
+	if ok, err := s.VoidTransaction(ctx, txnID); err != nil || !ok {
+		t.Fatalf("void: %v %v", ok, err)
+	}
+	if _, err := s.GetActiveTxnForReceipt(ctx, rID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("after void: err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestResolveID(t *testing.T) {
 	s := NewTest(t)
 	ctx := context.Background()
