@@ -4,3 +4,9 @@
 # oh-my-claudecode runtime state (project-scoped skills stay committable)
 .omc/
 !.omc/skills/
+
+.env
+.env.*
+!.env.example
+testdata/real/
+/finbox

@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16   # before deploy: pin exact tag with arm64 manifest
+    environment:
+      POSTGRES_USER: finbox
+      POSTGRES_PASSWORD: finbox
+      POSTGRES_DB: finbox
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finbox"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:
