@@ -74,6 +74,13 @@ func (s *Store) SetCard(ctx context.Context, id string, chatID, cardMsgID int64)
 	return err
 }
 
+// GetReceiptByCard finds the receipt whose confirm/discard card lives at
+// this chat+message (used to resolve a reply-to-summary text into a receipt).
+func (s *Store) GetReceiptByCard(ctx context.Context, chatID, cardMsgID int64) (Receipt, error) {
+	return scanReceipt(s.pool.QueryRow(ctx,
+		`select `+receiptCols+` from receipts where tg_chat_id=$1 and tg_card_message_id=$2`, chatID, cardMsgID))
+}
+
 func (s *Store) Transition(ctx context.Context, id, from, to, failReason string) (bool, error) {
 	tag, err := s.pool.Exec(ctx,
 		`update receipts set status=$3, fail_reason=nullif($4,''), updated_at=now() where id=$1 and status=$2`,

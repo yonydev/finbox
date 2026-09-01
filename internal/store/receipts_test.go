@@ -84,3 +84,19 @@ func TestClaimComplete(t *testing.T) {
 		t.Fatalf("purge: %d %v", n, err)
 	}
 }
+
+func TestGetReceiptByCard(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	r := mkReceipt(t, s, "sha-card", 300)
+	if err := s.SetCard(ctx, r.ID, 42, 999); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetReceiptByCard(ctx, 42, 999)
+	if err != nil || got.ID != r.ID {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	if _, err := s.GetReceiptByCard(ctx, 42, 1000); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
