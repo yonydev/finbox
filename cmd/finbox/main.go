@@ -26,6 +26,7 @@ func subcommands() []subcommand {
 	return []subcommand{
 		{"version", "print version", cmdVersion},
 		{"help", "show help", cmdHelp},
+		{"extract", "extrae un ticket local (Milestone 0)", cmdExtract},
 	}
 }
 
