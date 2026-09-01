@@ -2,12 +2,19 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
+	"strconv"
+	"strings"
 	"time"
 
+	"finbox/internal/command"
+	"finbox/internal/extract"
 	"finbox/internal/messages"
 	"finbox/internal/pipeline"
+	"finbox/internal/store"
+	"finbox/internal/validate"
 )
 
 const anonymousAdminID = 1087968824 // spec §5: reject Telegram's anonymous-admin pseudo-id
@@ -68,12 +75,19 @@ func (b *Bot) HandleUpdate(ctx context.Context, u Update) {
 	if done {
 		return
 	}
+	completeSeparately := true
 	switch {
+	case u.CallbackQuery != nil:
+		completeSeparately = b.handleCallback(ctx, u.UpdateID, u.CallbackQuery)
 	case u.Message != nil && (len(u.Message.Photo) > 0 || u.Message.Document != nil):
 		b.handlePhoto(ctx, u.Message)
+	case u.Message != nil:
+		b.handleText(ctx, u.Message)
 	}
-	if err := b.d.Store.CompleteUpdate(ctx, u.UpdateID); err != nil {
-		b.d.Log.Error("complete failed", "update_id", u.UpdateID, "err", err)
+	if completeSeparately {
+		if err := b.d.Store.CompleteUpdate(ctx, u.UpdateID); err != nil {
+			b.d.Log.Error("complete failed", "update_id", u.UpdateID, "err", err)
+		}
 	}
 }
 
@@ -137,6 +151,164 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 	}
 }
 
+// handleCallback returns true when the caller must CompleteUpdate separately
+// (confirm/discard stamp completion inside their own DB transaction).
+func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQuery) bool {
+	b.api.AnswerCallbackQuery(ctx, cb.ID)
+	parts := strings.SplitN(cb.Data, "|", 2)
+	if len(parts) != 2 || cb.Message == nil {
+		return true
+	}
+	action, receiptID := parts[0], parts[1]
+	chat, msgID := cb.Message.Chat.ID, cb.Message.MessageID
+	rec, err := b.d.Store.GetReceipt(ctx, receiptID)
+	if err != nil {
+		b.edit(ctx, chat, msgID, messages.ReceiptNotFound, nil)
+		return true
+	}
+	short := shortID(rec.ID)
+	switch action {
+	case "c":
+		v, verr := b.validatedFromStored(rec)
+		if verr != nil {
+			b.edit(ctx, chat, msgID, FailedCard(short, "extracción corrupta, usa reintentar"), nil)
+			return true
+		}
+		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
+			OccurredOn: v.OccurredOn, Merchant: v.Merchant, AmountMinor: v.AmountMinor,
+			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v),
+		}, updateID)
+		if err != nil {
+			b.d.Log.Error("confirm failed", "err", err)
+			return true
+		}
+		if !ok {
+			b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
+			b.d.Store.CompleteUpdate(ctx, updateID)
+			return false
+		}
+		b.edit(ctx, chat, msgID, SavedCard(short, v), nil)
+		return false // completion stamped inside ConfirmReceipt's tx
+	case "d":
+		ok, err := b.d.Store.DiscardReceipt(ctx, rec.ID, updateID)
+		if err != nil {
+			b.d.Log.Error("discard failed", "err", err)
+			return true
+		}
+		if ok {
+			b.edit(ctx, chat, msgID, DiscardedCard(short), nil)
+		} else { // stale tap — never leave a dead card
+			b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
+		}
+		return false
+	case "r":
+		res, err := pipeline.Reprocess(ctx, b.d, rec.ID, time.Now())
+		if err != nil {
+			b.d.Log.Error("reprocess failed", "err", err)
+			return true
+		}
+		b.renderResult(ctx, chat, msgID, res)
+		return true
+	}
+	return true
+}
+
+// validatedFromStored re-runs validation over the stored post-scrub extraction,
+// so confirm always persists exactly what the card showed.
+func (b *Bot) validatedFromStored(rec store.Receipt) (validate.Validated, error) {
+	var ex extract.Extraction
+	if err := json.Unmarshal(rec.Extraction, &ex); err != nil {
+		return validate.Validated{}, err
+	}
+	return validate.Run(ex, time.Now(), b.d.Loc)
+}
+
+func (b *Bot) handleText(ctx context.Context, m *Message) {
+	chat := m.Chat.ID
+	if m.ReplyTo != nil {
+		short := "<id>"
+		if rec, err := b.d.Store.GetReceiptByCard(ctx, chat, m.ReplyTo.MessageID); err == nil {
+			short = shortID(rec.ID)
+		}
+		b.api.SendMessage(ctx, chat, fmt.Sprintf(messages.EditComingSoon, short), nil)
+		return
+	}
+	fields := strings.Fields(m.Text)
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
+		b.api.SendMessage(ctx, chat, messages.NotACommand, nil)
+		return
+	}
+	cmd := fields[0]
+	if i := strings.IndexByte(cmd, '@'); i >= 0 { // "/list@finbox_bot" → "/list"
+		cmd = cmd[:i]
+	}
+	arg := ""
+	if len(fields) > 1 {
+		arg = fields[1]
+	}
+	now := time.Now()
+	switch cmd {
+	case "/start", "/help":
+		b.api.SendMessage(ctx, chat, messages.HelpText, nil)
+	case "/list":
+		limit := 10
+		capped := false
+		if n, err := strconv.Atoi(arg); err == nil {
+			if n > 50 {
+				n, capped = 50, true
+			}
+			if n > 0 {
+				limit = n
+			}
+		}
+		rows, err := command.List(ctx, b.d.Store, limit, "", now, b.d.Loc)
+		if err != nil {
+			b.api.SendMessage(ctx, chat, html.EscapeString(err.Error()), nil)
+			return
+		}
+		lines := ListLines(rows)
+		if len(lines) == 0 {
+			lines = []string{messages.NoExpenses}
+		}
+		if capped {
+			lines = append(lines, messages.ListCapNote)
+		}
+		for _, chunk := range Chunk(lines, Budget) {
+			b.api.SendMessage(ctx, chat, chunk, nil)
+		}
+	case "/month":
+		year, mo, totals, count, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)
+		if err != nil {
+			b.api.SendMessage(ctx, chat, html.EscapeString(err.Error()), nil)
+			return
+		}
+		b.api.SendMessage(ctx, chat, MonthSummary(year, mo, totals, count), nil)
+	case "/pending":
+		recs, err := command.Pending(ctx, b.d.Store)
+		if err != nil {
+			b.api.SendMessage(ctx, chat, html.EscapeString(err.Error()), nil)
+			return
+		}
+		if len(recs) == 0 {
+			b.api.SendMessage(ctx, chat, messages.NothingPending, nil)
+			return
+		}
+		var lines []string
+		for _, r := range recs {
+			line := fmt.Sprintf("<code>%s</code> · %s", shortID(r.ID), r.Status)
+			if r.FailReason != "" {
+				line += " · " + html.EscapeString(r.FailReason)
+			}
+			lines = append(lines, line)
+		}
+		for _, chunk := range Chunk(lines, Budget) {
+			b.api.SendMessage(ctx, chat, chunk, nil)
+		}
+	default:
+		b.api.SendMessage(ctx, chat, messages.NotACommand, nil)
+	}
+}
+
 func (b *Bot) edit(ctx context.Context, chat, msgID int64, text string, kb *InlineKeyboard) {
 	if err := b.api.EditMessageText(ctx, chat, msgID, text, kb); err != nil {
 		b.d.Log.Error("edit failed", "err", err)
@@ -148,4 +320,15 @@ func shortID(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+func itemsToNew(v validate.Validated) []store.NewItem {
+	items := make([]store.NewItem, 0, len(v.Items))
+	for _, it := range v.Items {
+		items = append(items, store.NewItem{
+			Position: it.Position, Name: it.Name,
+			QuantityMilli: it.QuantityMilli, AmountMinor: it.AmountMinor,
+		})
+	}
+	return items
 }

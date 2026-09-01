@@ -100,6 +100,50 @@ func TestPhotoHappyPath(t *testing.T) {
 	}
 }
 
+func TestConfirmCallbackSavesAndIsIdempotent(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), photoUpdate(3, 111))
+	recs, _ := st.PendingReceipts(context.Background())
+	rec := recs[0]
+	cb := Update{UpdateID: 4, CallbackQuery: &CallbackQuery{
+		ID: "cb1", From: &User{ID: 111}, Data: "c|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}}
+	b.HandleUpdate(context.Background(), cb)
+	if !strings.Contains(api.last().text, "Guardado") || api.last().kb != nil {
+		t.Fatalf("last = %+v", api.last())
+	}
+	rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d", len(rows))
+	}
+	// replay the same update: dedup makes it a no-op
+	n := len(api.calls)
+	b.HandleUpdate(context.Background(), cb)
+	if len(api.calls) != n {
+		t.Fatalf("replayed update produced calls: %+v", api.calls[n:])
+	}
+	// stale tap with a NEW update id: answered + AlreadySaved edit, no second txn
+	cb2 := cb
+	cb2.UpdateID = 5
+	cb2.CallbackQuery = &CallbackQuery{ID: "cb2", From: &User{ID: 111}, Data: cb.CallbackQuery.Data, Message: cb.CallbackQuery.Message}
+	b.HandleUpdate(context.Background(), cb2)
+	rows, _ = st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows) != 1 {
+		t.Fatalf("stale tap created a txn")
+	}
+}
+
+func TestListCommandClampsAt50(t *testing.T) {
+	b, api, _ := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), Update{UpdateID: 6, Message: &Message{
+		MessageID: 60, From: &User{ID: 111}, Chat: Chat{ID: 111}, Text: "/list 100",
+	}})
+	if !strings.Contains(api.last().text, "máx. 50") {
+		t.Fatalf("last = %+v", api.last())
+	}
+}
+
 func TestBootstrapEmptyAllowlist(t *testing.T) {
 	st := store.NewTest(t)
 	api := &fakeAPI{}
