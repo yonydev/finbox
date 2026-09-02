@@ -116,7 +116,7 @@ func (c *Client) call(ctx context.Context, method string, payload any, out any) 
 		}
 		var ar apiResp
 		err = json.NewDecoder(resp.Body).Decode(&ar)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("telegram %s: bad response: %w", method, err)
 		}
@@ -185,7 +185,7 @@ func (c *Client) Download(ctx context.Context, filePath string) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("download: HTTP %d", resp.StatusCode)
 	}

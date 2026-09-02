@@ -110,7 +110,7 @@ func (b *Bot) handlePhoto(ctx context.Context, m *Message) {
 		fileID, size = m.Document.FileID, m.Document.FileSize
 	}
 	if size > pipeline.MaxImageBytes {
-		b.api.SendMessage(ctx, chat, messages.TooBig, nil)
+		b.send(ctx, chat, messages.TooBig)
 		return
 	}
 	reading, err := b.api.SendMessage(ctx, chat, messages.Reading, nil)
@@ -199,7 +199,9 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 // handleCallback returns true when the caller must CompleteUpdate separately
 // (confirm/discard stamp completion inside their own DB transaction).
 func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQuery) bool {
-	b.api.AnswerCallbackQuery(ctx, cb.ID)
+	if err := b.api.AnswerCallbackQuery(ctx, cb.ID); err != nil {
+		b.d.Log.Warn("answer callback failed", "err", err) // best-effort ack; worst case a lingering spinner
+	}
 	parts := strings.SplitN(cb.Data, "|", 2)
 	if len(parts) != 2 || cb.Message == nil {
 		return true
@@ -278,12 +280,12 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 		if rec, err := b.d.Store.GetReceiptByCard(ctx, chat, m.ReplyTo.MessageID); err == nil {
 			short = shortID(rec.ID)
 		}
-		b.api.SendMessage(ctx, chat, fmt.Sprintf(messages.EditComingSoon, short), nil)
+		b.send(ctx, chat, fmt.Sprintf(messages.EditComingSoon, short))
 		return
 	}
 	fields := strings.Fields(m.Text)
 	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
-		b.api.SendMessage(ctx, chat, messages.NotACommand, nil)
+		b.send(ctx, chat, messages.NotACommand)
 		return
 	}
 	cmd := fields[0]
@@ -297,7 +299,7 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 	now := time.Now()
 	switch cmd {
 	case "/start", "/help":
-		b.api.SendMessage(ctx, chat, messages.HelpText, nil)
+		b.send(ctx, chat, messages.HelpText)
 	case "/list":
 		limit := 10
 		capped := false
@@ -311,7 +313,7 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 		}
 		rows, err := command.List(ctx, b.d.Store, limit, "", now, b.d.Loc)
 		if err != nil {
-			b.api.SendMessage(ctx, chat, html.EscapeString(err.Error()), nil)
+			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
 		lines := ListLines(rows)
@@ -322,23 +324,23 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			lines = append(lines, messages.ListCapNote)
 		}
 		for _, chunk := range Chunk(lines, Budget) {
-			b.api.SendMessage(ctx, chat, chunk, nil)
+			b.send(ctx, chat, chunk)
 		}
 	case "/month":
 		year, mo, totals, count, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)
 		if err != nil {
-			b.api.SendMessage(ctx, chat, html.EscapeString(err.Error()), nil)
+			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
-		b.api.SendMessage(ctx, chat, MonthSummary(year, mo, totals, count), nil)
+		b.send(ctx, chat, MonthSummary(year, mo, totals, count))
 	case "/pending":
 		recs, err := command.Pending(ctx, b.d.Store)
 		if err != nil {
-			b.api.SendMessage(ctx, chat, html.EscapeString(err.Error()), nil)
+			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
 		if len(recs) == 0 {
-			b.api.SendMessage(ctx, chat, messages.NothingPending, nil)
+			b.send(ctx, chat, messages.NothingPending)
 			return
 		}
 		var lines []string
@@ -350,10 +352,18 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			lines = append(lines, line)
 		}
 		for _, chunk := range Chunk(lines, Budget) {
-			b.api.SendMessage(ctx, chat, chunk, nil)
+			b.send(ctx, chat, chunk)
 		}
 	default:
-		b.api.SendMessage(ctx, chat, messages.NotACommand, nil)
+		b.send(ctx, chat, messages.NotACommand)
+	}
+}
+
+// send is the fire-and-forget counterpart of edit: reply failures are logged,
+// never fatal — the bot must keep processing updates.
+func (b *Bot) send(ctx context.Context, chat int64, text string) {
+	if _, err := b.api.SendMessage(ctx, chat, text, nil); err != nil {
+		b.d.Log.Error("send failed", "chat", chat, "err", err)
 	}
 }
 

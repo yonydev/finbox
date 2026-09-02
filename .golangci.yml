@@ -1,0 +1,17 @@
+version: "2"
+linters:
+  settings:
+    errcheck:
+      # CLI/human output to an io.Writer: a failed write to stdout/stderr has
+      # no meaningful recovery in a CLI; checking each Fprint adds noise, not safety.
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - (*encoding/json.Encoder).Encode
+  exclusions:
+    rules:
+      # Test files: unchecked setup/fixture errors fail loudly via the test itself.
+      - path: _test\.go
+        linters:
+          - errcheck

@@ -39,7 +39,7 @@ func (s *Store) Migrate(ctx context.Context) (int, error) {
 	if _, err := conn.Exec(ctx, `select pg_advisory_lock(722001)`); err != nil {
 		return 0, err
 	}
-	defer conn.Exec(ctx, `select pg_advisory_unlock(722001)`)
+	defer func() { _, _ = conn.Exec(ctx, `select pg_advisory_unlock(722001)`) }() // best-effort unlock; session end releases it anyway
 	if _, err := conn.Exec(ctx,
 		`create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())`); err != nil {
 		return 0, err
