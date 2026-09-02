@@ -64,7 +64,8 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	if err := bot.BootSweep(ctx); err != nil {
 		log.Error("boot sweep failed", "err", err)
 	}
-	log.Info("finbox serve: polling", "allowlist_size", len(cfg.AllowedUserIDs))
+	log.Info("finbox serve: polling", "allowlist_size", len(cfg.AllowedUserIDs),
+		"model", cfg.OpenAIModel, "tz", cfg.Loc.String(), "blob_dir", cfg.BlobDir, "version", version)
 	err = bot.Poll(ctx)
 	if err != nil && ctx.Err() == nil {
 		fmt.Fprintf(stderr, "poll: %v\n", err)

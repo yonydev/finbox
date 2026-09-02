@@ -67,6 +67,14 @@ func (b *Bot) HandleUpdate(ctx context.Context, u Update) {
 	if !b.authorized(from) {
 		return
 	}
+	kind := "text"
+	switch {
+	case u.CallbackQuery != nil:
+		kind = "callback"
+	case u.Message != nil && (len(u.Message.Photo) > 0 || u.Message.Document != nil):
+		kind = "photo"
+	}
+	b.d.Log.Info("update", "update_id", u.UpdateID, "user_id", from, "kind", kind)
 	done, err := b.d.Store.ClaimUpdate(ctx, u.UpdateID)
 	if err != nil {
 		b.d.Log.Error("claim failed", "update_id", u.UpdateID, "err", err)
@@ -112,11 +120,13 @@ func (b *Bot) handlePhoto(ctx context.Context, m *Message) {
 	}
 	f, err := b.api.GetFile(ctx, fileID)
 	if err != nil {
+		b.d.Log.Error("get file failed", "chat", chat, "err", err)
 		b.edit(ctx, chat, reading.MessageID, messages.DownloadFailed, nil)
 		return
 	}
 	img, err := b.api.Download(ctx, f.FilePath)
 	if err != nil {
+		b.d.Log.Error("download failed", "chat", chat, "err", err)
 		b.edit(ctx, chat, reading.MessageID, messages.DownloadFailed, nil)
 		return
 	}

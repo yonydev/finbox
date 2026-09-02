@@ -136,9 +136,14 @@ func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte,
 	exRes, err := extractWithRetry(ctx, d, image, mime)
 	if err != nil {
 		reason := failReason(err)
-		if _, terr := d.Store.Transition(ctx, rec.ID, fromStatus, "failed", reason); terr != nil {
+		ok, terr := d.Store.Transition(ctx, rec.ID, fromStatus, "failed", reason)
+		if terr != nil {
 			return Result{}, terr
 		}
+		if !ok {
+			d.Log.Warn("transition lost race", "receipt", rec.ID, "from", fromStatus)
+		}
+		d.Log.Warn("receipt failed", "receipt", rec.ID, "reason", reason)
 		res.Outcome, res.FailReason = OutcomeFailed, reason
 		return res, nil
 	}
@@ -152,17 +157,26 @@ func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte,
 	v, verr := validate.Run(scrubbed.Extraction, now, d.Loc)
 	if verr != nil {
 		reason := verr.Error()
-		if _, terr := d.Store.Transition(ctx, rec.ID, fromStatus, "failed", reason); terr != nil {
+		ok, terr := d.Store.Transition(ctx, rec.ID, fromStatus, "failed", reason)
+		if terr != nil {
 			return Result{}, terr
 		}
+		if !ok {
+			d.Log.Warn("transition lost race", "receipt", rec.ID, "from", fromStatus)
+		}
+		d.Log.Warn("receipt failed", "receipt", rec.ID, "reason", reason)
 		res.Outcome, res.FailReason = OutcomeFailed, reason
 		return res, nil
 	}
 	if dup, err := d.Store.HasDuplicate(ctx, v.OccurredOn, v.AmountMinor); err == nil && dup {
 		v.Warnings = append(v.Warnings, "⚠️ posible duplicado: ya hay un gasto con esa fecha y monto")
 	}
-	if _, err := d.Store.Transition(ctx, rec.ID, fromStatus, "awaiting_confirm", ""); err != nil {
+	ok, err := d.Store.Transition(ctx, rec.ID, fromStatus, "awaiting_confirm", "")
+	if err != nil {
 		return Result{}, err
+	}
+	if !ok {
+		d.Log.Warn("transition lost race", "receipt", rec.ID, "from", fromStatus)
 	}
 	res.Outcome, res.Validated = OutcomeAwaitingConfirm, v
 	return res, nil
@@ -183,6 +197,7 @@ func extractWithRetry(ctx context.Context, d Deps, image []byte, mime string) (e
 			return res, nil
 		}
 		last = err
+		d.Log.Warn("extract attempt failed", "attempt", attempt, "err", err)
 		if errors.Is(err, extract.ErrNonRetryable) {
 			return extract.Result{}, err
 		}
