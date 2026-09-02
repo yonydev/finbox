@@ -3,12 +3,14 @@ set -euo pipefail
 
 HOST="${FINBOX_DEPLOY_HOST:-finbox-pi}"
 DIR="${FINBOX_DEPLOY_DIR:-~/finbox}"
+# Sentinel file proving the target's data disk is mounted; set to "skip" if not applicable.
+SENTINEL="${FINBOX_DATA_SENTINEL:-/mnt/ssd/.finbox-ssd}"
 
 ssh "$HOST" bash -s <<EOF
 set -euo pipefail
 cd $DIR
-# SSD sentinel: refuse to run against an unmounted data disk (spec §10)
-test -f /mnt/ssd/.finbox-ssd || { echo "SSD sentinel missing — is /mnt/ssd mounted?"; exit 1; }
+# Data-disk sentinel: refuse to run against an unmounted data disk (spec §10)
+[ "$SENTINEL" = skip ] || test -f "$SENTINEL" || { echo "data-disk sentinel $SENTINEL missing — is the disk mounted?"; exit 1; }
 git pull --ff-only
 docker compose build finbox
 docker compose up -d postgres

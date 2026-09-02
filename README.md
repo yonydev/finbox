@@ -71,14 +71,18 @@ Each bot has its own token; the token you put in `.env` determines which bot the
 
 ```bash
 cp .env.example .env
-# edit .env: paste in your dev bot's TELEGRAM_BOT_TOKEN and your OPENAI_API_KEY
+# edit .env: paste in your dev bot's TELEGRAM_BOT_TOKEN and your OPENAI_API_KEY.
+# Running on the host (not in Docker)? Also change FINBOX_BLOB_DIR to a writable
+# path like ./data/receipts — the /data/receipts default is the container's path.
 
 docker compose up -d postgres
 go run ./cmd/finbox migrate
 go run ./cmd/finbox serve
 ```
 
-`serve` runs the bot and pipeline as a daemon. Every other subcommand (`list`, `edit`, `void`, `reprocess`, ...) is a one-shot CLI call against the same database.
+`serve` runs the bot and pipeline as a daemon. Every other subcommand (`list`, `edit`, `void`, `reprocess`, ...) is a one-shot CLI call against the same database. Either prefix them with `go run ./cmd/finbox` or build the binary once: `go build -o finbox ./cmd/finbox`.
+
+Cost note: extraction uses `gpt-4o-mini` vision — a typical receipt costs fractions of a cent, so normal personal use lands around $1–3/month of OpenAI credit.
 
 ## First-run bootstrap
 
@@ -111,21 +115,31 @@ finbox reprocess <id>
 
 Every read/write CLI command accepts `--json` for scripting, with stable exit codes (`0` ok, `1` runtime error, `2` usage error, `3` not found/ambiguous id). `<id>` can be a full UUID or its 8-character short prefix, same one shown in `/list` and `finbox list`.
 
-## Deploying to the Pi
+## Deploying to your own Pi / server
 
-`deploy.sh` runs from your laptop and deploys over SSH to whatever host `FINBOX_DEPLOY_HOST` points at (default alias: `finbox-pi`, configured in your own `~/.ssh/config` — never checked into this repo). It builds the image, brings up Postgres, runs migrations, and restarts the app:
+`deploy.sh` runs from your laptop and deploys over SSH to whatever host **you** configure — it has no address baked in, so it can only ever reach a machine you point it at:
 
 ```bash
-./deploy.sh
+FINBOX_DEPLOY_HOST=me@my-server ./deploy.sh
+# or add a `Host finbox-pi` alias to your ~/.ssh/config and just run ./deploy.sh
 ```
 
-It refuses to run if the Pi's data SSD isn't mounted. A fuller operations runbook (backups, restore drills, mount-ordering guards) lands in a later task.
+The target needs: Docker with the compose plugin, a clone of this repo at `~/finbox` (override with `FINBOX_DEPLOY_DIR`), a filled `.env` (use the **production** bot token there, and set a real `POSTGRES_PASSWORD`), and a sentinel file marking your data disk so the script refuses to run against an unmounted volume: `touch /your/data/disk/.finbox-ssd` and set `FINBOX_DATA_SENTINEL` to that path (or `FINBOX_DATA_SENTINEL=skip` if the guard doesn't apply to your setup).
+
+The script builds the image on the target, brings up Postgres, runs migrations, restarts the app, and verifies the new version responds.
 
 ## Testing
 
-Most tests are plain unit tests and need nothing special. Tests that touch Postgres need a running instance:
+Most tests are plain unit tests and need nothing special. Tests that touch Postgres need a running instance **and a dedicated test database** — the test helper truncates every table between tests, so never point `TEST_DB_URL` at a database you care about:
 
 ```bash
 docker compose up -d postgres
-TEST_DB_URL=postgres://finbox:finbox@localhost:5432/finbox go test ./...
+docker compose exec postgres psql -U finbox -c 'create database finbox_test'   # once
+TEST_DB_URL=postgres://finbox:finbox@localhost:5432/finbox_test go test -p 1 ./...
 ```
+
+The `-p 1` matters: test packages share that one database, so they must not run in parallel. Without `TEST_DB_URL`, DB-backed tests skip and the rest of the suite still runs.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
