@@ -4,7 +4,7 @@
 # oh-my-claudecode runtime state (project-scoped skills stay committable)
 .omc/
 !.omc/skills/
-docs/superpowers/
+docs/
 
 .env
 .env.*
