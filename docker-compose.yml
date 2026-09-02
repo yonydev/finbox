@@ -3,7 +3,7 @@ services:
     image: pgvector/pgvector:pg16   # before deploy: pin exact tag with arm64 manifest
     environment:
       POSTGRES_USER: finbox
-      POSTGRES_PASSWORD: finbox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finbox}   # override in .env on the Pi
       POSTGRES_DB: finbox
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
@@ -23,7 +23,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      FINBOX_DB_URL: postgres://finbox:finbox@postgres:5432/finbox
+      FINBOX_DB_URL: postgres://finbox:${POSTGRES_PASSWORD:-finbox}@postgres:5432/finbox
       FINBOX_BLOB_DIR: /data/receipts
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS}
