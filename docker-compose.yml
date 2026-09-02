@@ -13,5 +13,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  finbox:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FINBOX_DB_URL: postgres://finbox:finbox@postgres:5432/finbox
+      FINBOX_BLOB_DIR: /data/receipts
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TZ: America/Mexico_City
+    volumes:
+      - receipts:/data/receipts
 volumes:
   pgdata:
+  receipts:
