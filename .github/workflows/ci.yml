@@ -21,3 +21,14 @@ jobs:
       - run: go test -p 1 ./...   # -p 1: packages share one test DB and truncate it
         env:
           TEST_DB_URL: postgres://finbox:finbox@localhost:5432/finbox_test
+      - run: GOARCH=arm64 go build ./...   # deploy milestone: Pi 5 is arm64
+      - uses: golangci/golangci-lint-action@v6
+        with: { version: v1.62.2 }
+
+  # Gitleaks matters from the day this repo flips public — it's a no-op cost until then.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
