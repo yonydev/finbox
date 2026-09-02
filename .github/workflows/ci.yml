@@ -22,8 +22,8 @@ jobs:
         env:
           TEST_DB_URL: postgres://finbox:finbox@localhost:5432/finbox_test
       - run: GOARCH=arm64 go build ./...   # deploy milestone: Pi 5 is arm64
-      - uses: golangci/golangci-lint-action@v6
-        with: { version: v1.62.2 }
+      - uses: golangci/golangci-lint-action@v8
+        with: { version: latest }
 
   # Gitleaks matters from the day this repo flips public — it's a no-op cost until then.
   gitleaks:

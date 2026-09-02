@@ -97,7 +97,7 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 	for i, it := range ex.Items {
 		item := Item{Position: i + 1, Name: strings.TrimSpace(Scrub(it.Name))}
 		if q := strings.TrimSpace(it.Quantity); q != "" {
-			if qm, err := parseQuantityMilli(q); err == nil {
+			if qm, err := money.ParseMilli(q); err == nil {
 				item.QuantityMilli = &qm
 			}
 		}
@@ -119,26 +119,4 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 			money.Format(sum, v.Currency), money.Format(total, v.Currency)))
 	}
 	return v, nil
-}
-
-// parseQuantityMilli parses "1.5" → 1500 with up to 3 decimals, integer math.
-func parseQuantityMilli(s string) (int64, error) {
-	intPart, frac := s, ""
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		intPart, frac = s[:i], s[i+1:]
-	}
-	if len(frac) > 3 {
-		return 0, fmt.Errorf("too many decimals")
-	}
-	for len(frac) < 3 {
-		frac += "0"
-	}
-	var n int64
-	for _, r := range intPart + frac {
-		if r < '0' || r > '9' {
-			return 0, fmt.Errorf("invalid quantity %q", s)
-		}
-		n = n*10 + int64(r-'0')
-	}
-	return n, nil
 }

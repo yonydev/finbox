@@ -18,7 +18,18 @@ func Exponent(currency string) int {
 // ParseMinor converts a decimal string to integer minor units using
 // integer math only. Tolerates "$", spaces and "," thousands separators.
 func ParseMinor(s, currency string) (int64, error) {
-	exp := Exponent(currency)
+	return parseFixedPoint(s, Exponent(currency))
+}
+
+// ParseMilli converts a decimal string ("1.5") to integer milli-units
+// (1500) with up to 3 decimals, integer math only. Used for quantities.
+func ParseMilli(s string) (int64, error) {
+	return parseFixedPoint(s, 3)
+}
+
+// parseFixedPoint scales a decimal string to an integer with `decimals`
+// fraction digits, guarded against int64 overflow.
+func parseFixedPoint(s string, decimals int) (int64, error) {
 	clean := strings.Map(func(r rune) rune {
 		switch r {
 		case '$', ',', ' ':
@@ -40,10 +51,10 @@ func ParseMinor(s, currency string) (int64, error) {
 	if intPart == "" && fracPart == "" {
 		return 0, fmt.Errorf("monto inválido: %q", s)
 	}
-	if len(fracPart) > exp {
-		return 0, fmt.Errorf("%q tiene más de %d decimales", s, exp)
+	if len(fracPart) > decimals {
+		return 0, fmt.Errorf("%q tiene más de %d decimales", s, decimals)
 	}
-	for len(fracPart) < exp {
+	for len(fracPart) < decimals {
 		fracPart += "0"
 	}
 	var n int64

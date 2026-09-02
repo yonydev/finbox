@@ -53,12 +53,14 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 		Extractor: openai.New(cfg.OpenAIKey, cfg.OpenAIModel), Loc: cfg.Loc, Log: log}
 	bot := telegram.NewBot(api, d, cfg.AllowedUserIDs)
 
-	api.SetMyCommands(ctx, []telegram.BotCommand{
+	if err := api.SetMyCommands(ctx, []telegram.BotCommand{
 		{Command: "list", Description: "últimos gastos"},
 		{Command: "month", Description: "total del mes"},
 		{Command: "pending", Description: "recibos pendientes"},
 		{Command: "help", Description: "ayuda"},
-	})
+	}); err != nil {
+		log.Error("set my commands failed", "err", err)
+	}
 	if err := bot.BootSweep(ctx); err != nil {
 		log.Error("boot sweep failed", "err", err)
 	}

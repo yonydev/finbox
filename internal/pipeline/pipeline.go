@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -94,7 +95,17 @@ func Reprocess(ctx context.Context, d Deps, receiptID string, now time.Time) (Re
 	if err != nil {
 		return Result{}, err
 	}
-	if rec.Status != "pending" && rec.Status != "failed" && rec.Status != "discarded" {
+	allowed := rec.Status == "pending" || rec.Status == "failed" || rec.Status == "discarded"
+	if !allowed && rec.Status == "confirmed" {
+		// A confirmed receipt is only reprocessable once its transaction has
+		// been voided — ErrNotFound here means there's no active txn left.
+		if _, err := d.Store.GetActiveTxnForReceipt(ctx, receiptID); errors.Is(err, store.ErrNotFound) {
+			allowed = true
+		} else if err != nil {
+			return Result{}, err
+		}
+	}
+	if !allowed {
 		return Result{ReceiptID: rec.ID, Outcome: OutcomeRejected,
 			FailReason: "solo se reprocesa un recibo pending/failed/discarded"}, nil
 	}
@@ -109,8 +120,19 @@ func Reprocess(ctx context.Context, d Deps, receiptID string, now time.Time) (Re
 	return runExtraction(ctx, d, rec, image, ty.MIME(), rec.Status, now)
 }
 
-func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte, mime, fromStatus string, now time.Time) (Result, error) {
-	res := Result{ReceiptID: rec.ID}
+func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte, mime, fromStatus string, now time.Time) (res Result, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			reason := fmt.Sprintf("panic: %v", r)
+			d.Log.Error("panic in runExtraction", "receipt", rec.ID, "panic", r)
+			if _, terr := d.Store.Transition(ctx, rec.ID, fromStatus, "failed", reason); terr != nil {
+				res, err = Result{}, terr
+				return
+			}
+			res, err = Result{ReceiptID: rec.ID, Outcome: OutcomeFailed, FailReason: reason}, nil
+		}
+	}()
+	res = Result{ReceiptID: rec.ID}
 	exRes, err := extractWithRetry(ctx, d, image, mime)
 	if err != nil {
 		reason := failReason(err)

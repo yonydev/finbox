@@ -80,21 +80,13 @@ type API interface {
 	SetMyCommands(ctx context.Context, cmds []BotCommand) error
 }
 
-type ClientOption func(*Client)
-
-func WithBaseURL(u string) ClientOption { return func(c *Client) { c.base = u } }
-
 type Client struct {
 	token, base string
 	hc          *http.Client
 }
 
-func NewClient(token string, opts ...ClientOption) *Client {
-	c := &Client{token: token, base: "https://api.telegram.org", hc: &http.Client{Timeout: 90 * time.Second}}
-	for _, o := range opts {
-		o(c)
-	}
-	return c
+func NewClient(token string) *Client {
+	return &Client{token: token, base: "https://api.telegram.org", hc: &http.Client{Timeout: 90 * time.Second}}
 }
 
 type apiResp struct {

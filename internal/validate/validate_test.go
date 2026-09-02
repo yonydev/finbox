@@ -84,6 +84,18 @@ func TestSumSkippedWhenUnpriced(t *testing.T) {
 	}
 }
 
+func TestQuantityOverflowIgnoredNotWrapped(t *testing.T) {
+	ex := base()
+	ex.Items[0].Quantity = "99999999999999999999" // overflows int64 milli units
+	v, err := Run(ex, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Items[0].QuantityMilli != nil {
+		t.Errorf("quantity overflow should be silently dropped, got %v", *v.Items[0].QuantityMilli)
+	}
+}
+
 func TestRunHardFailures(t *testing.T) {
 	for _, mut := range []func(*extract.Extraction){
 		func(e *extract.Extraction) { e.Total = "" },

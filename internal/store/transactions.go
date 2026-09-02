@@ -52,7 +52,7 @@ func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTrans
 			return err
 		}
 		if tag.RowsAffected() != 1 {
-			return nil // stale tap: no-op, still stamp the update below? No: caller decides.
+			return nil // stale tap: no-op, completion-stamping is the caller's call
 		}
 		confirmed = true
 		err = tx.QueryRow(ctx, `insert into transactions (receipt_id, occurred_on, merchant, amount_minor, currency, source)

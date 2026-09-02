@@ -30,7 +30,8 @@ const okBody = `{
 func TestExtractOK(t *testing.T) {
 	srv := fakeCompletion(t, 200, okBody)
 	defer srv.Close()
-	ex := New("sk-test", "gpt-4o-mini", WithBaseURL(srv.URL+"/")) // trailing slash: the client path-joins onto the base
+	ex := New("sk-test", "gpt-4o-mini")
+	ex.baseURL = srv.URL + "/" // trailing slash: the client path-joins onto the base
 	res, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg")
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +51,8 @@ func TestExtractOK(t *testing.T) {
 func TestExtractNonRetryable(t *testing.T) {
 	srv := fakeCompletion(t, 401, `{"error":{"message":"bad key","type":"invalid_request_error"}}`)
 	defer srv.Close()
-	ex := New("sk-bad", "gpt-4o-mini", WithBaseURL(srv.URL+"/"))
+	ex := New("sk-bad", "gpt-4o-mini")
+	ex.baseURL = srv.URL + "/"
 	_, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg")
 	if !errors.Is(err, ErrNonRetryable) {
 		t.Fatalf("err = %v, want ErrNonRetryable", err)

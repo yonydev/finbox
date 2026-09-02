@@ -13,16 +13,16 @@ func TestParse(t *testing.T) {
 		wantM   time.Month
 		wantErr bool
 	}{
-		{"", 2026, time.August, false},        // current month
-		{"aug", 2026, time.August, false},     // current month IS most recent
-		{"ago", 2026, time.August, false},     // spanish
-		{"dec", 2025, time.December, false},   // future month → last year
+		{"", 2026, time.August, false},      // current month
+		{"aug", 2026, time.August, false},   // current month IS most recent
+		{"ago", 2026, time.August, false},   // spanish
+		{"dec", 2025, time.December, false}, // future month → last year
 		{"dic", 2025, time.December, false},
-		{"jan", 2026, time.January, false},    // past month this year
+		{"jan", 2026, time.January, false}, // past month this year
 		{"2026-01", 2026, time.January, false},
 		{"2025-12", 2025, time.December, false},
-		{"AUG", 2026, time.August, false},     // case-insensitive
-		{"agosto", 0, 0, true},                // full names not supported
+		{"AUG", 2026, time.August, false}, // case-insensitive
+		{"agosto", 0, 0, true},            // full names not supported
 		{"13", 0, 0, true},
 		{"2026-13", 0, 0, true},
 	}

@@ -25,20 +25,12 @@ total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
 - No inventes valores: campo ilegible = "" u omitido.`
 
-type Option func(*Extractor)
-
-func WithBaseURL(u string) Option { return func(e *Extractor) { e.baseURL = u } }
-
 type Extractor struct {
 	apiKey, model, baseURL string
 }
 
-func New(apiKey, model string, opts ...Option) *Extractor {
-	e := &Extractor{apiKey: apiKey, model: model}
-	for _, o := range opts {
-		o(e)
-	}
-	return e
+func New(apiKey, model string) *Extractor {
+	return &Extractor{apiKey: apiKey, model: model}
 }
 
 func (e *Extractor) client() oa.Client {

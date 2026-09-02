@@ -9,6 +9,7 @@ RUN go build -ldflags="-s -w" -o /finbox ./cmd/finbox
 
 FROM alpine:3.22
 RUN adduser -D -u 10001 finbox
+RUN mkdir -p /data/receipts && chown finbox:finbox /data/receipts
 USER finbox
 COPY --from=build /finbox /usr/local/bin/finbox
 ENTRYPOINT ["finbox"]

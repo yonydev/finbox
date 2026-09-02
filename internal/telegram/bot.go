@@ -132,7 +132,9 @@ func (b *Bot) handlePhoto(ctx context.Context, m *Message) {
 	}
 	b.renderResult(ctx, chat, reading.MessageID, res)
 	if res.ReceiptID != "" {
-		b.d.Store.SetCard(ctx, res.ReceiptID, chat, reading.MessageID)
+		if err := b.d.Store.SetCard(ctx, res.ReceiptID, chat, reading.MessageID); err != nil {
+			b.d.Log.Error("set card failed", "err", err)
+		}
 	}
 }
 
@@ -155,8 +157,10 @@ func (b *Bot) handleDuplicate(ctx context.Context, chat, msgID int64, existingID
 			return
 		}
 		b.renderResult(ctx, chat, msgID, res)
-		b.d.Store.SetCard(ctx, existing.ID, chat, msgID)
-	case "awaiting_confirm":
+		if err := b.d.Store.SetCard(ctx, existing.ID, chat, msgID); err != nil {
+			b.d.Log.Error("set card failed", "err", err)
+		}
+	case "awaiting_confirm", "pending":
 		b.edit(ctx, chat, msgID, fmt.Sprintf("%s (<code>%s</code>)", messages.AwaitingYourConfirm, html.EscapeString(shortID(existing.ID))), nil)
 	default: // confirmed, or anything unexpected
 		b.edit(ctx, chat, msgID, fmt.Sprintf("%s (<code>%s</code>)", messages.AlreadyProcessed, html.EscapeString(shortID(existing.ID))), nil)
@@ -215,7 +219,9 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		}
 		if !ok {
 			b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
-			b.d.Store.CompleteUpdate(ctx, updateID)
+			if err := b.d.Store.CompleteUpdate(ctx, updateID); err != nil {
+				b.d.Log.Error("complete update failed", "err", err)
+			}
 			return false
 		}
 		b.edit(ctx, chat, msgID, SavedCard(short, v), nil)

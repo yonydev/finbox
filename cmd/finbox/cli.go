@@ -15,6 +15,7 @@ import (
 	"finbox/internal/command"
 	"finbox/internal/config"
 	"finbox/internal/extract/openai"
+	"finbox/internal/money"
 	"finbox/internal/pipeline"
 	"finbox/internal/store"
 )
@@ -27,7 +28,11 @@ type cliEnv struct {
 
 func withStore(stderr io.Writer, asJSON bool, fn func(e cliEnv) int) int {
 	cfg, err := config.FromEnv(os.Getenv)
-	if err != nil || cfg.DBURL == "" {
+	if err != nil {
+		cliErr(stderr, asJSON, err.Error())
+		return exitUsage
+	}
+	if cfg.DBURL == "" {
 		cliErr(stderr, asJSON, "falta FINBOX_DB_URL")
 		return exitUsage
 	}
@@ -83,15 +88,22 @@ func hasJSONFlag(argv []string) bool {
 // parseFlags parses argv with fsx, discarding flag's own plain-text error
 // output, and instead reports a parse failure through cliErr so the --json
 // contract (errors as {"error":...} on stderr) holds even when parsing
-// itself fails, e.g. an unknown flag. Returns false on error; callers should
-// return exitUsage in that case.
-func parseFlags(fsx *flag.FlagSet, argv []string, stderr io.Writer) bool {
+// itself fails, e.g. an unknown flag. -h/--help prints usage to stdout and
+// exits 0, matching normal CLI conventions instead of the exitUsage a stray
+// flag gets. Returns (proceed, exitCode); callers should return exitCode
+// when proceed is false.
+func parseFlags(fsx *flag.FlagSet, argv []string, stdout, stderr io.Writer) (bool, int) {
 	fsx.SetOutput(io.Discard)
 	if err := fsx.Parse(argv); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fsx.SetOutput(stdout)
+			fsx.Usage()
+			return false, exitOK
+		}
 		cliErr(stderr, hasJSONFlag(argv), err.Error())
-		return false
+		return false, exitUsage
 	}
-	return true
+	return true, exitOK
 }
 
 type txnJSON struct {
@@ -114,8 +126,8 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 	limit := fsx.Int("limit", 10, "máx. de filas")
 	month := fsx.String("month", "", "mes: aug | ago | 2026-08")
 	asJSON := fsx.Bool("json", false, "salida JSON")
-	if !parseFlags(fsx, argv, stderr) {
-		return exitUsage
+	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
+		return code
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
 		rows, err := command.List(e.ctx, e.st, *limit, *month, time.Now(), e.cfg.Loc)
@@ -131,8 +143,8 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 			return exitOK
 		}
 		for _, r := range rows {
-			fmt.Fprintf(stdout, "%s · %s · %s · %d.%02d %s\n", r.ShortID,
-				r.OccurredOn.Format("2006-01-02"), r.Merchant, r.AmountMinor/100, r.AmountMinor%100, r.Currency)
+			fmt.Fprintf(stdout, "%s · %s · %s · %s\n", r.ShortID,
+				r.OccurredOn.Format("2006-01-02"), r.Merchant, money.Format(r.AmountMinor, r.Currency))
 		}
 		return exitOK
 	})
@@ -146,8 +158,8 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	currency := fsx.String("currency", "", "nueva moneda ISO 4217")
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
-	if !parseFlags(fsx, rest, stderr) {
-		return exitUsage
+	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
+		return code
 	}
 	if id == "" {
 		cliErr(stderr, *asJSON, "uso: finbox edit <id> [--total N] [--merchant S] [--date D] [--currency C]")
@@ -162,8 +174,8 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 		if *asJSON {
 			json.NewEncoder(stdout).Encode(toJSON(row))
 		} else {
-			fmt.Fprintf(stdout, "editado %s · %s · %d.%02d %s\n", row.ShortID, row.Merchant,
-				row.AmountMinor/100, row.AmountMinor%100, row.Currency)
+			fmt.Fprintf(stdout, "editado %s · %s · %s\n", row.ShortID, row.Merchant,
+				money.Format(row.AmountMinor, row.Currency))
 		}
 		return exitOK
 	})
@@ -173,8 +185,8 @@ func cmdVoid(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("void", flag.ContinueOnError)
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
-	if !parseFlags(fsx, rest, stderr) {
-		return exitUsage
+	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
+		return code
 	}
 	if id == "" {
 		cliErr(stderr, *asJSON, "uso: finbox void <id>")
@@ -201,8 +213,8 @@ func cmdReprocess(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("reprocess", flag.ContinueOnError)
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
-	if !parseFlags(fsx, rest, stderr) {
-		return exitUsage
+	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
+		return code
 	}
 	if id == "" {
 		cliErr(stderr, *asJSON, "uso: finbox reprocess <receipt-id>")

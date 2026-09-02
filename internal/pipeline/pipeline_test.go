@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,5 +124,62 @@ func TestReprocessFromFailed(t *testing.T) {
 	res2, err := Reprocess(context.Background(), d, res.ReceiptID, now)
 	if err != nil || res2.Outcome != OutcomeAwaitingConfirm {
 		t.Fatalf("reprocess: %+v %v", res2, err)
+	}
+}
+
+func confirm(t *testing.T, d Deps, receiptID string) string {
+	t.Helper()
+	txnID, ok, err := d.Store.ConfirmReceipt(context.Background(), receiptID, store.NewTransaction{
+		OccurredOn: now, Merchant: "Walmart", AmountMinor: 36400, Currency: "MXN", Source: "receipt",
+	}, 0)
+	if err != nil || !ok {
+		t.Fatalf("confirm: ok=%v err=%v", ok, err)
+	}
+	return txnID
+}
+
+func TestReprocessConfirmedWithVoidedTxnAllowed(t *testing.T) {
+	fe := &fakeExtractor{res: goodResult()}
+	d := deps(t, fe)
+	res, _ := IngestPhoto(context.Background(), d, jpegBytes(), 107, 7, now)
+	txnID := confirm(t, d, res.ReceiptID)
+	if _, err := d.Store.VoidTransaction(context.Background(), txnID); err != nil {
+		t.Fatal(err)
+	}
+	res2, err := Reprocess(context.Background(), d, res.ReceiptID, now)
+	if err != nil || res2.Outcome != OutcomeAwaitingConfirm {
+		t.Fatalf("reprocess: %+v %v", res2, err)
+	}
+}
+
+func TestReprocessConfirmedWithActiveTxnRejected(t *testing.T) {
+	fe := &fakeExtractor{res: goodResult()}
+	d := deps(t, fe)
+	res, _ := IngestPhoto(context.Background(), d, jpegBytes(), 108, 7, now)
+	confirm(t, d, res.ReceiptID)
+	res2, err := Reprocess(context.Background(), d, res.ReceiptID, now)
+	if err != nil || res2.Outcome != OutcomeRejected {
+		t.Fatalf("reprocess: %+v %v", res2, err)
+	}
+}
+
+type panicExtractor struct{}
+
+func (panicExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
+	panic("boom")
+}
+
+func TestIngestRecoversFromExtractorPanic(t *testing.T) {
+	d := deps(t, panicExtractor{})
+	res, err := IngestPhoto(context.Background(), d, jpegBytes(), 109, 7, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outcome != OutcomeFailed || !strings.Contains(res.FailReason, "panic") {
+		t.Fatalf("outcome=%v reason=%q", res.Outcome, res.FailReason)
+	}
+	r, err := d.Store.GetReceipt(context.Background(), res.ReceiptID)
+	if err != nil || r.Status != "failed" || !strings.Contains(r.FailReason, "panic") {
+		t.Fatalf("receipt %+v %v", r, err)
 	}
 }

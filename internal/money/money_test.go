@@ -14,12 +14,12 @@ func TestParseMinor(t *testing.T) {
 		{"0.01", "USD", 1, false},
 		{"-12.50", "MXN", -1250, false},
 		{"1200", "JPY", 1200, false},
-		{"12.5", "JPY", 0, true},   // fraction digits > exponent
+		{"12.5", "JPY", 0, true},    // fraction digits > exponent
 		{"364.355", "MXN", 0, true}, // 3 fraction digits
 		{"", "MXN", 0, true},
 		{"12a", "MXN", 0, true},
-		{"1,200.00", "MXN", 120000, false}, // thousands separators tolerated
-		{"$364.00", "MXN", 36400, false},   // currency symbol tolerated
+		{"1,200.00", "MXN", 120000, false},            // thousands separators tolerated
+		{"$364.00", "MXN", 36400, false},              // currency symbol tolerated
 		{"1234567890123456789012345", "MXN", 0, true}, // 25 digits overflow
 		{"922337203685477580.07", "MXN", 0, true},     // exceeds max int64
 	}

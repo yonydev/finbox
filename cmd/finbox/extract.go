@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"finbox/internal/config"
@@ -21,10 +20,7 @@ func cmdExtract(argv []string, stdout, stderr io.Writer) int {
 	asJSON := fs.Bool("json", false, "salida JSON")
 	// stdlib flag stops parsing at the first positional arg, so pop the
 	// path FIRST — otherwise `finbox extract foto.jpg --json` never sees --json.
-	var path string
-	if len(argv) > 0 && !strings.HasPrefix(argv[0], "-") {
-		path, argv = argv[0], argv[1:]
-	}
+	path, argv := popID(argv)
 	if err := fs.Parse(argv); err != nil {
 		return exitUsage
 	}
@@ -43,7 +39,11 @@ func cmdExtract(argv []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	cfg, err := config.FromEnv(os.Getenv)
-	if err != nil || cfg.OpenAIKey == "" {
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return exitUsage
+	}
+	if cfg.OpenAIKey == "" {
 		fmt.Fprintln(stderr, "falta OPENAI_API_KEY en el entorno")
 		return exitUsage
 	}

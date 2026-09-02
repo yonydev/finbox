@@ -59,6 +59,17 @@ func TestCLIUnknownFlagJSONError(t *testing.T) {
 	}
 }
 
+func TestCLIListHelpExitsZero(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := run([]string{"finbox", "list", "-h"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "-limit") {
+		t.Errorf("stdout %q missing -limit", out.String())
+	}
+}
+
 func TestCLIEditNotFoundExit3(t *testing.T) {
 	_, _ = cliStore(t)
 	t.Setenv("FINBOX_DB_URL", os.Getenv("TEST_DB_URL"))

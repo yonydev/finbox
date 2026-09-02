@@ -40,7 +40,8 @@ func TestGetUpdatesAndSend(t *testing.T) {
 		return nil
 	})
 	defer srv.Close()
-	c := NewClient("test-token", WithBaseURL(srv.URL))
+	c := NewClient("test-token")
+	c.base = srv.URL
 	ups, err := c.GetUpdates(context.Background(), 5, 0)
 	if err != nil || len(ups) != 1 || ups[0].UpdateID != 6 || ups[0].Message.Text != "/list" {
 		t.Fatalf("updates: %+v %v", ups, err)
@@ -57,7 +58,8 @@ func TestAPIErrorSurfaces(t *testing.T) {
 		w.Write([]byte(`{"ok":false,"description":"Bad Request: chat not found"}`))
 	}))
 	defer srv.Close()
-	c := NewClient("test-token", WithBaseURL(srv.URL))
+	c := NewClient("test-token")
+	c.base = srv.URL
 	if _, err := c.SendMessage(context.Background(), 1, "x", nil); err == nil {
 		t.Fatal("want error")
 	}
