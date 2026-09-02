@@ -73,7 +73,7 @@ func MonthSummary(year int, month time.Month, totals []store.CurrencyTotal, coun
 	return fmt.Sprintf("<b>%04d-%02d</b>: %s · %d gastos", year, int(month), strings.Join(parts, " + "), count)
 }
 
-// Chunk packs lines into messages of at most budget chars (spec §5).
+// Chunk packs lines into messages of at most budget chars.
 func Chunk(lines []string, budget int) []string {
 	var out []string
 	var cur strings.Builder

@@ -9,7 +9,7 @@ SENTINEL="${FINBOX_DATA_SENTINEL:-/mnt/ssd/.finbox-ssd}"
 ssh "$HOST" bash -s <<EOF
 set -euo pipefail
 cd $DIR
-# Data-disk sentinel: refuse to run against an unmounted data disk (spec §10)
+# Data-disk sentinel: refuse to run against an unmounted data disk
 [ "$SENTINEL" = skip ] || test -f "$SENTINEL" || { echo "data-disk sentinel $SENTINEL missing — is the disk mounted?"; exit 1; }
 git pull --ff-only
 docker compose build finbox

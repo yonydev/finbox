@@ -31,7 +31,7 @@ func (b *Bot) BootSweep(ctx context.Context) error {
 	return nil
 }
 
-// Poll runs the long-polling loop until ctx is cancelled (spec §4).
+// Poll runs the long-polling loop until ctx is cancelled.
 func (b *Bot) Poll(ctx context.Context) error {
 	var offset int64
 	for {

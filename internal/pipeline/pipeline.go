@@ -89,7 +89,7 @@ func IngestPhoto(ctx context.Context, d Deps, image []byte, tgMessageID, tgChatI
 	return runExtraction(ctx, d, rec, image, ty.MIME(), "pending", now)
 }
 
-// Reprocess re-runs extract+validate from the stored blob (spec §4 transitions).
+// Reprocess re-runs extract+validate from the stored blob.
 func Reprocess(ctx context.Context, d Deps, receiptID string, now time.Time) (Result, error) {
 	rec, err := d.Store.GetReceipt(ctx, receiptID)
 	if err != nil {

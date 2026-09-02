@@ -13,7 +13,7 @@ var tokens = map[string]time.Month{
 	"oct": 10, "nov": 11, "dec": 12, "dic": 12,
 }
 
-// Parse resolves a month token against `now` (spec §5).
+// Parse resolves a month token against `now`.
 func Parse(tok string, now time.Time) (int, time.Month, error) {
 	tok = strings.ToLower(strings.TrimSpace(tok))
 	if tok == "" {

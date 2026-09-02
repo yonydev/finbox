@@ -10,7 +10,7 @@ import (
 
 const version = "0.1.0-dev"
 
-// exit codes per spec §6
+// exit codes
 const (
 	exitOK       = 0
 	exitRuntime  = 1

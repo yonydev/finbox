@@ -1,5 +1,5 @@
 // Package messages holds every user-facing string (es-MX). One place,
-// so future i18n is "add a second map" (spec §7).
+// so future i18n is "add a second map".
 package messages
 
 const (

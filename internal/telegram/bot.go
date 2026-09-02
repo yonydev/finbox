@@ -17,7 +17,7 @@ import (
 	"finbox/internal/validate"
 )
 
-const anonymousAdminID = 1087968824 // spec §5: reject Telegram's anonymous-admin pseudo-id
+const anonymousAdminID = 1087968824 // reject Telegram's anonymous-admin pseudo-id
 
 type Bot struct {
 	api     API
@@ -48,7 +48,7 @@ func (b *Bot) authorized(userID int64) bool {
 	return true
 }
 
-// HandleUpdate processes one update; it never panics outward (spec §4).
+// HandleUpdate processes one update; it never panics outward.
 func (b *Bot) HandleUpdate(ctx context.Context, u Update) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -149,7 +149,7 @@ func (b *Bot) handlePhoto(ctx context.Context, m *Message) {
 }
 
 // handleDuplicate answers a re-sent photo whose blob_sha256 already exists
-// (spec §5): status-aware, so a discarded/failed receipt gets a fresh
+// — status-aware, so a discarded/failed receipt gets a fresh
 // reprocess onto this new message instead of a dead-end "already processed".
 func (b *Bot) handleDuplicate(ctx context.Context, chat, msgID int64, existingID string) {
 	existing, err := b.d.Store.GetReceipt(ctx, existingID)

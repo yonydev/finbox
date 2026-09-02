@@ -216,7 +216,7 @@ func (s *Store) HasDuplicate(ctx context.Context, occurredOn time.Time, amountMi
 var hexPrefix = regexp.MustCompile(`^[0-9a-f]{8}$`)
 
 // ResolveID resolves an 8-char uuid prefix or full uuid across receipts and
-// transactions using a sargable range scan on the primary keys (spec §5).
+// transactions using a sargable range scan on the primary keys.
 func (s *Store) ResolveID(ctx context.Context, prefix string) (string, string, error) {
 	prefix = strings.ToLower(strings.TrimSpace(prefix))
 	if len(prefix) == 36 { // full uuid: equality on both tables
