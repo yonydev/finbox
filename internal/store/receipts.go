@@ -105,6 +105,13 @@ func (s *Store) receiptsByStatus(ctx context.Context, statuses ...string) ([]Rec
 	return out, rows.Err()
 }
 
+// CountReceipts reports the total receipts row count (dedup/no-new-row assertions).
+func (s *Store) CountReceipts(ctx context.Context) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `select count(*) from receipts`).Scan(&n)
+	return n, err
+}
+
 func (s *Store) PendingReceipts(ctx context.Context) ([]Receipt, error) {
 	return s.receiptsByStatus(ctx, "awaiting_confirm", "failed")
 }

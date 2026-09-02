@@ -126,12 +126,45 @@ func (b *Bot) handlePhoto(ctx context.Context, m *Message) {
 		b.edit(ctx, chat, reading.MessageID, messages.SomethingWrong, nil)
 		return
 	}
+	if res.Outcome == pipeline.OutcomeDuplicate {
+		b.handleDuplicate(ctx, chat, reading.MessageID, res.DuplicateOfID)
+		return
+	}
 	b.renderResult(ctx, chat, reading.MessageID, res)
 	if res.ReceiptID != "" {
 		b.d.Store.SetCard(ctx, res.ReceiptID, chat, reading.MessageID)
 	}
 }
 
+// handleDuplicate answers a re-sent photo whose blob_sha256 already exists
+// (spec §5): status-aware, so a discarded/failed receipt gets a fresh
+// reprocess onto this new message instead of a dead-end "already processed".
+func (b *Bot) handleDuplicate(ctx context.Context, chat, msgID int64, existingID string) {
+	existing, err := b.d.Store.GetReceipt(ctx, existingID)
+	if err != nil {
+		b.d.Log.Error("get receipt for duplicate failed", "err", err)
+		b.edit(ctx, chat, msgID, fmt.Sprintf("%s (<code>%s</code>)", messages.AlreadyProcessed, html.EscapeString(shortID(existingID))), nil)
+		return
+	}
+	switch existing.Status {
+	case "discarded", "failed":
+		res, err := pipeline.Reprocess(ctx, b.d, existing.ID, time.Now())
+		if err != nil {
+			b.d.Log.Error("reprocess on duplicate failed", "err", err)
+			b.edit(ctx, chat, msgID, messages.SomethingWrong, nil)
+			return
+		}
+		b.renderResult(ctx, chat, msgID, res)
+		b.d.Store.SetCard(ctx, existing.ID, chat, msgID)
+	case "awaiting_confirm":
+		b.edit(ctx, chat, msgID, fmt.Sprintf("%s (<code>%s</code>)", messages.AwaitingYourConfirm, html.EscapeString(shortID(existing.ID))), nil)
+	default: // confirmed, or anything unexpected
+		b.edit(ctx, chat, msgID, fmt.Sprintf("%s (<code>%s</code>)", messages.AlreadyProcessed, html.EscapeString(shortID(existing.ID))), nil)
+	}
+}
+
+// renderResult renders every outcome except OutcomeDuplicate, which
+// handleDuplicate intercepts before this is ever called.
 func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.Result) {
 	short := shortID(res.ReceiptID)
 	switch res.Outcome {
@@ -144,8 +177,6 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 	case pipeline.OutcomeFailed:
 		kb := &InlineKeyboard{{{Text: messages.BtnRetry, CallbackData: "r|" + res.ReceiptID}}}
 		b.edit(ctx, chat, msgID, FailedCard(short, res.FailReason), kb)
-	case pipeline.OutcomeDuplicate:
-		b.edit(ctx, chat, msgID, fmt.Sprintf("%s (<code>%s</code>)", messages.AlreadyProcessed, html.EscapeString(shortID(res.DuplicateOfID))), nil)
 	case pipeline.OutcomeRejected:
 		b.edit(ctx, chat, msgID, html.EscapeString(res.FailReason), nil)
 	}
@@ -196,7 +227,8 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 			return true
 		}
 		if ok {
-			b.edit(ctx, chat, msgID, DiscardedCard(short), nil)
+			kb := &InlineKeyboard{{{Text: messages.BtnRetry, CallbackData: "r|" + rec.ID}}}
+			b.edit(ctx, chat, msgID, DiscardedCard(short), kb)
 		} else { // stale tap — never leave a dead card
 			b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
 		}

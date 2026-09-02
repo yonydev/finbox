@@ -144,6 +144,73 @@ func TestListCommandClampsAt50(t *testing.T) {
 	}
 }
 
+func TestDiscardCardHasRetryButton(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), photoUpdate(20, 111))
+	recs, _ := st.PendingReceipts(context.Background())
+	rec := recs[0]
+	cb := Update{UpdateID: 21, CallbackQuery: &CallbackQuery{
+		ID: "cbd", From: &User{ID: 111}, Data: "d|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}}
+	b.HandleUpdate(context.Background(), cb)
+	last := api.last()
+	if last.kb == nil || len(*last.kb) == 0 || len((*last.kb)[0]) == 0 || (*last.kb)[0][0].CallbackData != "r|"+rec.ID {
+		t.Fatalf("last = %+v", last)
+	}
+}
+
+func TestResendAfterDiscardRevives(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), photoUpdate(30, 111)) // update 1: photo
+	recs, _ := st.PendingReceipts(context.Background())
+	rec := recs[0]
+	cb := Update{UpdateID: 31, CallbackQuery: &CallbackQuery{ // update 2: discard
+		ID: "cbd2", From: &User{ID: 111}, Data: "d|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}}
+	b.HandleUpdate(context.Background(), cb)
+
+	b.HandleUpdate(context.Background(), photoUpdate(32, 111)) // update 3: same bytes, new message
+	last := api.last()
+	if strings.Contains(last.text, "ya procesé") {
+		t.Fatalf("still reports AlreadyProcessed after discard: %+v", last)
+	}
+	if last.kb == nil || len(*last.kb) == 0 || (*last.kb)[0][0].CallbackData != "c|"+rec.ID {
+		t.Fatalf("resend after discard did not revive an awaiting card: %+v", last)
+	}
+	revived, err := st.GetReceipt(context.Background(), rec.ID)
+	if err != nil || revived.Status != "awaiting_confirm" {
+		t.Fatalf("receipt status = %+v, err = %v", revived, err)
+	}
+	n, err := st.CountReceipts(context.Background())
+	if err != nil || n != 1 {
+		t.Fatalf("receipts count = %d, err = %v", n, err)
+	}
+}
+
+func TestResendAfterConfirmStillReports(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), photoUpdate(40, 111)) // update 1: photo
+	recs, _ := st.PendingReceipts(context.Background())
+	rec := recs[0]
+	cb := Update{UpdateID: 41, CallbackQuery: &CallbackQuery{ // update 2: confirm
+		ID: "cbc", From: &User{ID: 111}, Data: "c|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}}
+	b.HandleUpdate(context.Background(), cb)
+
+	b.HandleUpdate(context.Background(), photoUpdate(42, 111)) // update 3: same bytes, new message
+	last := api.last()
+	if !strings.Contains(last.text, "ya procesé") {
+		t.Fatalf("resend after confirm did not report AlreadyProcessed: %+v", last)
+	}
+	rows, err := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows = %d, err = %v", len(rows), err)
+	}
+}
+
 func TestBootstrapEmptyAllowlist(t *testing.T) {
 	st := store.NewTest(t)
 	api := &fakeAPI{}
