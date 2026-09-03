@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16   # before deploy: pin exact tag with arm64 manifest
+    image: pgvector/pgvector:0.8.6-pg16   # exact tag, arm64 manifest confirmed
     environment:
       POSTGRES_USER: finbox
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finbox}   # override in .env on the Pi
