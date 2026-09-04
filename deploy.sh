@@ -14,10 +14,11 @@ cd $DIR
 git pull --ff-only
 docker compose build finbox
 docker compose up -d postgres
-until docker compose exec -T postgres pg_isready -U finbox >/dev/null 2>&1; do sleep 1; done
-docker compose run --rm -T finbox migrate   # -T: don't let the container eat this script's stdin
+# </dev/null on every exec/run: they attach stdin, which here is the script bash -s is reading
+until docker compose exec -T postgres pg_isready -U finbox >/dev/null 2>&1 </dev/null; do sleep 1; done
+docker compose run --rm -T finbox migrate </dev/null
 docker compose up -d
 sleep 2
-docker compose exec -T finbox finbox version
+docker compose exec -T finbox finbox version </dev/null
 EOF
 echo "deploy ok"
