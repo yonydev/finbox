@@ -3,3 +3,6 @@ data/
 testdata/real/
 docs/
 .omc/
+pgdata
+receipts
+backups
