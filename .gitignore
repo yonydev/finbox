@@ -12,3 +12,9 @@ docs/
 testdata/real/
 /finbox
 data/
+
+# Pi deploy-machine local: compose override + data dirs
+docker-compose.override.yml
+pgdata/
+receipts/
+backups/
