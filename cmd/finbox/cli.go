@@ -155,7 +155,7 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	total := fsx.String("total", "", "nuevo total, ej. 285.00")
 	merchant := fsx.String("merchant", "", "nuevo comercio")
 	date := fsx.String("date", "", "nueva fecha YYYY-MM-DD")
-	currency := fsx.String("currency", "", "nueva moneda ISO 4217")
+	currency := fsx.String("currency", "", "nueva moneda ISO 4217, ej. MXN")
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	id, rest := popID(argv)
 	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
