@@ -16,6 +16,11 @@ docker compose build finbox
 docker compose up -d postgres
 # </dev/null on every exec/run: they attach stdin, which here is the script bash -s is reading
 until docker compose exec -T postgres pg_isready -U finbox >/dev/null 2>&1 </dev/null; do sleep 1; done
+# Pre-migration dump: instant rollback point if a migration goes wrong.
+# \$ so date runs on the target, not expanded by the local heredoc.
+mkdir -p backups
+docker compose exec -T postgres pg_dump -Fc -U finbox finbox > "backups/pre-migrate-\$(date +%F-%H%M%S).dump" </dev/null
+find backups -name 'pre-migrate-*.dump' -mtime +14 -delete
 docker compose run --rm -T finbox migrate </dev/null
 docker compose up -d
 sleep 2
