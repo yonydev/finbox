@@ -52,14 +52,70 @@ func FailedCard(shortID, failReason string) string {
 	return fmt.Sprintf("⚠️ <code>%s</code> · %s", html.EscapeString(shortID), html.EscapeString(failReason))
 }
 
-func ListLines(rows []store.TxnRow) []string {
-	out := make([]string, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, fmt.Sprintf("<code>%s</code> · %s · %s · %s",
-			html.EscapeString(r.ShortID), r.OccurredOn.Format("02/01"),
-			html.EscapeString(r.Merchant), money.Format(r.AmountMinor, r.Currency)))
+// listTableWidth is the widest line a phone-sized Telegram window shows
+// without wrapping <pre> content; the merchant column absorbs the slack.
+const listTableWidth = 34
+
+// ListTable renders rows as monospace tables — Telegram HTML has no <table>,
+// so <pre> with padded columns is the closest thing. Each returned string is
+// one ready-to-send message; the totals footer goes on the last one.
+func ListTable(rows []store.TxnRow) []string {
+	if len(rows) == 0 {
+		return nil
+	}
+	amtW := len("MONTO")
+	amounts := make([]string, len(rows))
+	for i, r := range rows {
+		amounts[i] = money.Format(r.AmountMinor, r.Currency)
+		if len(amounts[i]) > amtW {
+			amtW = len(amounts[i])
+		}
+	}
+	merchW := listTableWidth - 8 - 5 - amtW - 6 // id, fecha, monto + three 2-space gaps
+	if merchW < 4 {
+		merchW = 4
+	}
+	header := fmt.Sprintf("%-8s  %-5s  %*s  %s", "ID", "FECHA", amtW, "MONTO", "COMERCIO")
+	lines := make([]string, 0, len(rows))
+	totals := map[string]int64{}
+	var currencies []string // order of first appearance
+	for i, r := range rows {
+		if _, seen := totals[r.Currency]; !seen {
+			currencies = append(currencies, r.Currency)
+		}
+		totals[r.Currency] += r.AmountMinor
+		lines = append(lines, fmt.Sprintf("%-8s  %-5s  %*s  %s",
+			r.ShortID, r.OccurredOn.Format("02/01"), amtW, amounts[i],
+			truncateRunes(r.Merchant, merchW)))
+	}
+	parts := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		parts = append(parts, fmt.Sprintf("%s %s", money.Format(totals[c], c), c))
+	}
+	footer := strings.Repeat("─", listTableWidth) + "\n" +
+		fmt.Sprintf("TOTAL %s · %d", strings.Join(parts, " + "), len(rows))
+
+	overhead := len("<pre></pre>") + len(header) + len(footer) + 2
+	out := make([]string, 0, 1)
+	chunks := Chunk(lines, Budget-overhead)
+	for i, ch := range chunks {
+		body := header + "\n" + ch
+		if i == len(chunks)-1 {
+			body += "\n" + footer
+		}
+		out = append(out, "<pre>"+html.EscapeString(body)+"</pre>")
 	}
 	return out
+}
+
+// truncateRunes caps s at max runes, marking the cut with an ellipsis.
+// Rune-based: merchants carry accents, and a byte cut could split one.
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
 }
 
 func MonthSummary(year int, month time.Month, totals []store.CurrencyTotal, count int) string {

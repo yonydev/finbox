@@ -316,15 +316,15 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
-		lines := ListLines(rows)
-		if len(lines) == 0 {
-			lines = []string{messages.NoExpenses}
+		msgs := ListTable(rows)
+		if len(msgs) == 0 {
+			msgs = []string{messages.NoExpenses}
 		}
 		if capped {
-			lines = append(lines, messages.ListCapNote)
+			msgs = append(msgs, messages.ListCapNote)
 		}
-		for _, chunk := range Chunk(lines, Budget) {
-			b.send(ctx, chat, chunk)
+		for _, m := range msgs {
+			b.send(ctx, chat, m)
 		}
 	case "/month":
 		year, mo, totals, count, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)

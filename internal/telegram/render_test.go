@@ -51,12 +51,65 @@ func TestChunk(t *testing.T) {
 	}
 }
 
-func TestListLinesLeadWithShortID(t *testing.T) {
-	rows := []store.TxnRow{{ID: "a3f2c9d1-0000-0000-0000-000000000000", ShortID: "a3f2c9d1",
-		Merchant: "Walmart", Currency: "MXN", AmountMinor: 36400,
-		OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)}}
-	ls := ListLines(rows)
-	if len(ls) != 1 || !strings.HasPrefix(ls[0], "<code>a3f2c9d1</code>") {
-		t.Fatalf("lines = %q", ls)
+func listRow(shortID, merchant, currency string, amountMinor int64) store.TxnRow {
+	return store.TxnRow{ID: shortID + "-0000-0000-0000-000000000000", ShortID: shortID,
+		Merchant: merchant, Currency: currency, AmountMinor: amountMinor,
+		OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)}
+}
+
+func TestListTableAlignsColumnsAndTotals(t *testing.T) {
+	msgs := ListTable([]store.TxnRow{
+		listRow("a3f2c9d1", "Walmart", "MXN", 36400),
+		listRow("b4e1d0c2", "Oxxo", "MXN", 550),
+	})
+	if len(msgs) != 1 {
+		t.Fatalf("msgs = %d: %q", len(msgs), msgs)
+	}
+	m := msgs[0]
+	if !strings.HasPrefix(m, "<pre>") || !strings.HasSuffix(m, "</pre>") {
+		t.Fatalf("not wrapped in <pre>: %q", m)
+	}
+	for _, want := range []string{"ID", "FECHA", "MONTO", "COMERCIO",
+		"a3f2c9d1", "28/08", "$364.00", "$5.50", "TOTAL $369.50 MXN · 2"} {
+		if !strings.Contains(m, want) {
+			t.Errorf("table missing %q:\n%s", want, m)
+		}
+	}
+	// amounts right-aligned in the same column: both lines end the amount
+	// at the same offset, so the shorter one is left-padded
+	if !strings.Contains(m, " $5.50") {
+		t.Errorf("short amount not right-aligned:\n%s", m)
+	}
+}
+
+func TestListTableEscapesAndTruncatesMerchant(t *testing.T) {
+	msgs := ListTable([]store.TxnRow{
+		listRow("a3f2c9d1", "Tacos <El Güero> de la esquina S.A.", "MXN", 36400),
+	})
+	m := msgs[0]
+	if strings.Contains(m, "<El") {
+		t.Errorf("unescaped HTML in table:\n%s", m)
+	}
+	if !strings.Contains(m, "…") {
+		t.Errorf("long merchant not truncated:\n%s", m)
+	}
+	if strings.Contains(m, "esquina") {
+		t.Errorf("merchant not truncated to column width:\n%s", m)
+	}
+}
+
+func TestListTableMultiCurrencyTotals(t *testing.T) {
+	msgs := ListTable([]store.TxnRow{
+		listRow("a3f2c9d1", "Walmart", "MXN", 36400),
+		listRow("b4e1d0c2", "Amazon", "USD", 1999),
+	})
+	if !strings.Contains(msgs[0], "TOTAL $364.00 MXN + $19.99 USD · 2") {
+		t.Errorf("multi-currency total wrong:\n%s", msgs[0])
+	}
+}
+
+func TestListTableEmpty(t *testing.T) {
+	if msgs := ListTable(nil); len(msgs) != 0 {
+		t.Fatalf("expected no messages for no rows, got %q", msgs)
 	}
 }
