@@ -208,6 +208,13 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 	}
 	action, receiptID := parts[0], parts[1]
 	chat, msgID := cb.Message.Chat.ID, cb.Message.MessageID
+	if action == "x" { // close: no receipt attached, handle before the lookup
+		if err := b.api.DeleteMessage(ctx, chat, msgID); err != nil {
+			// Telegram refuses deletes on messages older than 48h — collapse instead
+			b.edit(ctx, chat, msgID, messages.ListClosed, nil)
+		}
+		return true
+	}
 	rec, err := b.d.Store.GetReceipt(ctx, receiptID)
 	if err != nil {
 		b.edit(ctx, chat, msgID, messages.ReceiptNotFound, nil)
@@ -323,8 +330,9 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 		if capped {
 			msgs = append(msgs, messages.ListCapNote)
 		}
+		closeKB := &InlineKeyboard{{{Text: messages.BtnClose, CallbackData: "x|-"}}}
 		for _, m := range msgs {
-			b.send(ctx, chat, m)
+			b.sendKB(ctx, chat, m, closeKB)
 		}
 	case "/month":
 		year, mo, totals, count, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)
@@ -362,7 +370,11 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 // send is the fire-and-forget counterpart of edit: reply failures are logged,
 // never fatal — the bot must keep processing updates.
 func (b *Bot) send(ctx context.Context, chat int64, text string) {
-	if _, err := b.api.SendMessage(ctx, chat, text, nil); err != nil {
+	b.sendKB(ctx, chat, text, nil)
+}
+
+func (b *Bot) sendKB(ctx context.Context, chat int64, text string, kb *InlineKeyboard) {
+	if _, err := b.api.SendMessage(ctx, chat, text, kb); err != nil {
 		b.d.Log.Error("send failed", "chat", chat, "err", err)
 	}
 }

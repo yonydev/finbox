@@ -31,5 +31,7 @@ Formatos: JPEG, PNG, WebP (como foto, no como archivo). Máx. 20 MB.`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"
 	BtnRetry    = "🔄 Reintentar"
+	BtnClose    = "❌ Cerrar"
+	ListClosed  = "🧾 lista cerrada"
 	ListCapNote = "máx. 50 — usa <code>finbox list</code> para más"
 )

@@ -75,6 +75,7 @@ type API interface {
 	SendMessage(ctx context.Context, chatID int64, html string, kb *InlineKeyboard) (Message, error)
 	EditMessageText(ctx context.Context, chatID, messageID int64, html string, kb *InlineKeyboard) error
 	AnswerCallbackQuery(ctx context.Context, id string) error
+	DeleteMessage(ctx context.Context, chatID, messageID int64) error
 	GetFile(ctx context.Context, fileID string) (File, error)
 	Download(ctx context.Context, filePath string) ([]byte, error)
 	SetMyCommands(ctx context.Context, cmds []BotCommand) error
@@ -167,6 +168,10 @@ func (c *Client) EditMessageText(ctx context.Context, chatID, messageID int64, h
 
 func (c *Client) AnswerCallbackQuery(ctx context.Context, id string) error {
 	return c.call(ctx, "answerCallbackQuery", map[string]any{"callback_query_id": id}, nil)
+}
+
+func (c *Client) DeleteMessage(ctx context.Context, chatID, messageID int64) error {
+	return c.call(ctx, "deleteMessage", map[string]any{"chat_id": chatID, "message_id": messageID}, nil)
 }
 
 func (c *Client) GetFile(ctx context.Context, fileID string) (File, error) {

@@ -21,9 +21,10 @@ type call struct {
 }
 
 type fakeAPI struct {
-	calls   []call
-	nextMsg int64
-	file    []byte
+	calls     []call
+	nextMsg   int64
+	file      []byte
+	deleteErr error
 }
 
 func (f *fakeAPI) GetUpdates(context.Context, int64, int) ([]Update, error) { return nil, nil }
@@ -39,6 +40,10 @@ func (f *fakeAPI) EditMessageText(_ context.Context, chat, msgID int64, html str
 func (f *fakeAPI) AnswerCallbackQuery(_ context.Context, id string) error {
 	f.calls = append(f.calls, call{method: "answer", text: id})
 	return nil
+}
+func (f *fakeAPI) DeleteMessage(_ context.Context, chat, msgID int64) error {
+	f.calls = append(f.calls, call{method: "delete", chat: chat, msgID: msgID})
+	return f.deleteErr
 }
 func (f *fakeAPI) GetFile(_ context.Context, id string) (File, error) {
 	return File{FileID: id, FilePath: "photos/x.jpg", FileSize: int64(len(f.file))}, nil
@@ -141,6 +146,42 @@ func TestListCommandClampsAt50(t *testing.T) {
 	}})
 	if !strings.Contains(api.last().text, "máx. 50") {
 		t.Fatalf("last = %+v", api.last())
+	}
+}
+
+func TestListCommandCarriesCloseButton(t *testing.T) {
+	b, api, _ := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), Update{UpdateID: 30, Message: &Message{
+		MessageID: 300, From: &User{ID: 111}, Chat: Chat{ID: 111}, Text: "/list",
+	}})
+	last := api.last()
+	if last.kb == nil || (*last.kb)[0][0].CallbackData != "x|-" {
+		t.Fatalf("list reply missing close button: %+v", last)
+	}
+}
+
+func TestCloseCallbackDeletesMessage(t *testing.T) {
+	b, api, _ := newBot(t, okExtractor{})
+	b.HandleUpdate(context.Background(), Update{UpdateID: 31, CallbackQuery: &CallbackQuery{
+		ID: "cbx", From: &User{ID: 111}, Data: "x|-",
+		Message: &Message{MessageID: 42, Chat: Chat{ID: 111}},
+	}})
+	last := api.last()
+	if last.method != "delete" || last.msgID != 42 {
+		t.Fatalf("expected delete of msg 42, last = %+v", last)
+	}
+}
+
+func TestCloseCallbackFallsBackToEditWhenDeleteFails(t *testing.T) {
+	b, api, _ := newBot(t, okExtractor{})
+	api.deleteErr = context.DeadlineExceeded // any error: e.g. message older than 48h
+	b.HandleUpdate(context.Background(), Update{UpdateID: 32, CallbackQuery: &CallbackQuery{
+		ID: "cbx2", From: &User{ID: 111}, Data: "x|-",
+		Message: &Message{MessageID: 43, Chat: Chat{ID: 111}},
+	}})
+	last := api.last()
+	if last.method != "edit" || last.msgID != 43 || !strings.Contains(last.text, "cerrada") {
+		t.Fatalf("expected collapse edit, last = %+v", last)
 	}
 }
 
