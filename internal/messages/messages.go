@@ -4,7 +4,7 @@ package messages
 
 const (
 	TooBig              = "imagen demasiado grande (máx. 20 MB)"
-	UnsupportedFormat   = "formato no soportado 📸 — envíalo como foto (JPEG/PNG/WebP)"
+	UnsupportedFormat   = "formato no soportado 📸 — solo JPEG/PNG/WebP (HEIC no: en iPhone usa Ajustes → Cámara → Formatos → Más compatible)"
 	Reading             = "🧾 Leyendo tu ticket…"
 	Saved               = "✅ Guardado"
 	Discarded           = "❌ Descartado"
@@ -27,7 +27,8 @@ Mándame una <b>foto de un ticket</b> y te muestro el resumen para confirmar.
 /pending — recibos pendientes o fallidos
 /help — esta ayuda
 
-Formatos: JPEG, PNG, WebP (como foto, no como archivo). Máx. 20 MB.`
+Formatos: JPEG, PNG, WebP, como foto o como archivo. Máx. 20 MB.
+Tip: los tickets largos mándalos como <b>archivo</b> 📎 — como foto, Telegram los comprime y la extracción falla.`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"
 	BtnRetry    = "🔄 Reintentar"
