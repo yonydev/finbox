@@ -22,7 +22,7 @@ const (
 
 Mándame una <b>foto de un ticket</b> y te muestro el resumen para confirmar.
 
-/list [N] — últimos N gastos (máx. 50) default 10
+/list [N] — últimos N gastos ( default 10, máx. 50)
 /month [mes] — total del mes (ej. /month aug, /month ago, /month 2026-01)
 /pending — recibos pendientes o fallidos
 /help — esta ayuda
