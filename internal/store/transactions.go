@@ -81,7 +81,7 @@ func (s *Store) DiscardReceipt(ctx context.Context, receiptID string, updateID i
 	discarded := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx,
-			`update receipts set status='discarded', updated_at=now() where id=$1 and status='awaiting_confirm'`, receiptID)
+			`update receipts set status='discarded', updated_at=now() where id=$1 and status in ('awaiting_confirm','failed')`, receiptID)
 		if err != nil {
 			return err
 		}

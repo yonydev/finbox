@@ -189,7 +189,10 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 		}}
 		b.edit(ctx, chat, msgID, Card(short, res.Validated), kb)
 	case pipeline.OutcomeFailed:
-		kb := &InlineKeyboard{{{Text: messages.BtnRetry, CallbackData: "r|" + res.ReceiptID}}}
+		kb := &InlineKeyboard{{
+			{Text: messages.BtnRetry, CallbackData: "r|" + res.ReceiptID},
+			{Text: messages.BtnDiscard, CallbackData: "d|" + res.ReceiptID},
+		}}
 		b.edit(ctx, chat, msgID, FailedCard(short, res.FailReason), kb)
 	case pipeline.OutcomeRejected:
 		b.edit(ctx, chat, msgID, html.EscapeString(res.FailReason), nil)
