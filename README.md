@@ -95,7 +95,7 @@ Cost note: extraction uses `gpt-4o-mini` vision — a typical receipt costs frac
 
 ## Daily use
 
-Send a photo of a receipt to the bot. It replies with a summary card (merchant, date, total, items, any warnings) and `✅ Confirmar` / `❌ Descartar` buttons. Confirming inserts the expense; discarding leaves the receipt on record but out of your totals. A discarded card keeps a `🔄 Reintentar` button, and re-sending the same photo also revives it with a fresh confirm card — nothing is lost by discarding.
+Send a photo of a receipt to the bot — for long receipts, send it **as a file** (📎 → File) so Telegram doesn't downscale it below what extraction can read; JPEG/PNG/WebP only (iPhone HEIC originals are rejected — set Camera → Formats → Most Compatible). It replies with a summary card (merchant, date, total, items, any warnings) and `✅ Confirmar` / `❌ Descartar` buttons. Confirming inserts the expense; discarding leaves the receipt on record but out of your totals. A discarded card keeps a `🔄 Reintentar` button, and re-sending the same photo also revives it with a fresh confirm card — nothing is lost by discarding.
 
 Bot commands:
 
