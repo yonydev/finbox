@@ -58,14 +58,10 @@ func listRow(shortID, merchant, currency string, amountMinor int64) store.TxnRow
 }
 
 func TestListTableAlignsColumnsAndTotals(t *testing.T) {
-	msgs := ListTable([]store.TxnRow{
+	m := ListTable([]store.TxnRow{
 		listRow("a3f2c9d1", "Walmart", "MXN", 36400),
 		listRow("b4e1d0c2", "Oxxo", "MXN", 550),
 	})
-	if len(msgs) != 1 {
-		t.Fatalf("msgs = %d: %q", len(msgs), msgs)
-	}
-	m := msgs[0]
 	if !strings.HasPrefix(m, "<pre>") || !strings.HasSuffix(m, "</pre>") {
 		t.Fatalf("not wrapped in <pre>: %q", m)
 	}
@@ -83,10 +79,9 @@ func TestListTableAlignsColumnsAndTotals(t *testing.T) {
 }
 
 func TestListTableEscapesAndTruncatesMerchant(t *testing.T) {
-	msgs := ListTable([]store.TxnRow{
+	m := ListTable([]store.TxnRow{
 		listRow("a3f2c9d1", "Tacos <El Güero> de la esquina S.A.", "MXN", 36400),
 	})
-	m := msgs[0]
 	if strings.Contains(m, "<El") {
 		t.Errorf("unescaped HTML in table:\n%s", m)
 	}
@@ -99,17 +94,17 @@ func TestListTableEscapesAndTruncatesMerchant(t *testing.T) {
 }
 
 func TestListTableMultiCurrencyTotals(t *testing.T) {
-	msgs := ListTable([]store.TxnRow{
+	m := ListTable([]store.TxnRow{
 		listRow("a3f2c9d1", "Walmart", "MXN", 36400),
 		listRow("b4e1d0c2", "Amazon", "USD", 1999),
 	})
-	if !strings.Contains(msgs[0], "TOTAL $364.00 MXN + $19.99 USD · 2") {
-		t.Errorf("multi-currency total wrong:\n%s", msgs[0])
+	if !strings.Contains(m, "TOTAL $364.00 MXN + $19.99 USD · 2") {
+		t.Errorf("multi-currency total wrong:\n%s", m)
 	}
 }
 
 func TestListTableEmpty(t *testing.T) {
-	if msgs := ListTable(nil); len(msgs) != 0 {
-		t.Fatalf("expected no messages for no rows, got %q", msgs)
+	if m := ListTable(nil); m != "" {
+		t.Fatalf("expected empty message for no rows, got %q", m)
 	}
 }

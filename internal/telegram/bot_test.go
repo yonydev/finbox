@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -182,6 +183,36 @@ func TestCloseCallbackFallsBackToEditWhenDeleteFails(t *testing.T) {
 	last := api.last()
 	if last.method != "edit" || last.msgID != 43 || !strings.Contains(last.text, "cerrada") {
 		t.Fatalf("expected collapse edit, last = %+v", last)
+	}
+}
+
+type errExtractor struct{}
+
+func (errExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
+	return extract.Result{}, fmt.Errorf("%w: ilegible", extract.ErrNonRetryable)
+}
+
+func TestFailedCardCanBeDiscarded(t *testing.T) {
+	b, api, st := newBot(t, errExtractor{})
+	b.HandleUpdate(context.Background(), photoUpdate(40, 111))
+	last := api.last()
+	if last.kb == nil || len((*last.kb)[0]) != 2 || !strings.HasPrefix((*last.kb)[0][1].CallbackData, "d|") {
+		t.Fatalf("failed card missing discard button: %+v", last)
+	}
+	recs, _ := st.PendingReceipts(context.Background())
+	if len(recs) != 1 {
+		t.Fatalf("recs = %+v", recs)
+	}
+	rec := recs[0]
+	b.HandleUpdate(context.Background(), Update{UpdateID: 41, CallbackQuery: &CallbackQuery{
+		ID: "cbf", From: &User{ID: 111}, Data: "d|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}})
+	if !strings.Contains(api.last().text, "Descartado") {
+		t.Fatalf("last = %+v", api.last())
+	}
+	if recs, _ = st.PendingReceipts(context.Background()); len(recs) != 0 {
+		t.Fatalf("failed receipt still pending: %+v", recs)
 	}
 }
 

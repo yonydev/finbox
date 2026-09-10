@@ -56,12 +56,14 @@ func FailedCard(shortID, failReason string) string {
 // without wrapping <pre> content; the merchant column absorbs the slack.
 const listTableWidth = 34
 
-// ListTable renders rows as monospace tables — Telegram HTML has no <table>,
-// so <pre> with padded columns is the closest thing. Each returned string is
-// one ready-to-send message; the totals footer goes on the last one.
-func ListTable(rows []store.TxnRow) []string {
+// ListTable renders rows as a monospace table — Telegram HTML has no <table>,
+// so <pre> with padded columns is the closest thing. Returns one ready-to-send
+// message, "" when there are no rows.
+// Single message: the 50-row cap keeps the table ≈1.8KB, half the 3.5KB
+// Budget; resurrect Chunk()-based splitting if the cap ever grows past ~90.
+func ListTable(rows []store.TxnRow) string {
 	if len(rows) == 0 {
-		return nil
+		return ""
 	}
 	amtW := len("MONTO")
 	amounts := make([]string, len(rows))
@@ -95,17 +97,8 @@ func ListTable(rows []store.TxnRow) []string {
 	footer := strings.Repeat("─", listTableWidth) + "\n" +
 		fmt.Sprintf("TOTAL %s · %d", strings.Join(parts, " + "), len(rows))
 
-	overhead := len("<pre></pre>") + len(header) + len(footer) + 2
-	out := make([]string, 0, 1)
-	chunks := Chunk(lines, Budget-overhead)
-	for i, ch := range chunks {
-		body := header + "\n" + ch
-		if i == len(chunks)-1 {
-			body += "\n" + footer
-		}
-		out = append(out, "<pre>"+html.EscapeString(body)+"</pre>")
-	}
-	return out
+	body := header + "\n" + strings.Join(lines, "\n") + "\n" + footer
+	return "<pre>" + html.EscapeString(body) + "</pre>"
 }
 
 // truncateRunes caps s at max runes, marking the cut with an ellipsis.
