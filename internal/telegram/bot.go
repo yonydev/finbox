@@ -326,15 +326,16 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
-		msgs := ListTable(rows)
-		if len(msgs) == 0 {
-			msgs = []string{messages.NoExpenses}
+		msg := ListTable(rows)
+		if msg == "" {
+			msg = messages.NoExpenses
 		}
+		msgs := []string{msg}
 		if capped {
 			msgs = append(msgs, messages.ListCapNote)
 		}
 		for _, m := range msgs {
-			b.sendKB(ctx, chat, m, closeKB())
+			b.sendKB(ctx, chat, m, closeKB)
 		}
 	case "/month":
 		year, mo, totals, count, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)
@@ -342,7 +343,7 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
-		b.sendKB(ctx, chat, MonthSummary(year, mo, totals, count), closeKB())
+		b.sendKB(ctx, chat, MonthSummary(year, mo, totals, count), closeKB)
 	case "/pending":
 		recs, err := command.Pending(ctx, b.d.Store)
 		if err != nil {
@@ -350,7 +351,7 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			return
 		}
 		if len(recs) == 0 {
-			b.sendKB(ctx, chat, messages.NothingPending, closeKB())
+			b.sendKB(ctx, chat, messages.NothingPending, closeKB)
 			return
 		}
 		var lines []string
@@ -362,7 +363,7 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			lines = append(lines, line)
 		}
 		for _, chunk := range Chunk(lines, Budget) {
-			b.sendKB(ctx, chat, chunk, closeKB())
+			b.sendKB(ctx, chat, chunk, closeKB)
 		}
 	default:
 		b.send(ctx, chat, messages.NotACommand)
@@ -375,12 +376,9 @@ func (b *Bot) send(ctx context.Context, chat int64, text string) {
 	b.sendKB(ctx, chat, text, nil)
 }
 
-// closeKB is the dismiss button attached to every informational reply
-// (/list, /month, /pending) so they can be cleared from the chat.
-// Fresh value per call: sends must not share a mutable keyboard.
-func closeKB() *InlineKeyboard {
-	return &InlineKeyboard{{{Text: messages.BtnClose, CallbackData: "x|-"}}}
-}
+// closeKB is the dismiss button on every informational reply (/list, /month,
+// /pending); read-only, safe to share.
+var closeKB = &InlineKeyboard{{{Text: messages.BtnClose, CallbackData: "x|-"}}}
 
 func (b *Bot) sendKB(ctx context.Context, chat int64, text string, kb *InlineKeyboard) {
 	if _, err := b.api.SendMessage(ctx, chat, text, kb); err != nil {
