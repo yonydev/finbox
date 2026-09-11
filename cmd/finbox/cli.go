@@ -150,6 +150,38 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 	})
 }
 
+func cmdAdd(argv []string, stdout, stderr io.Writer) int {
+	fsx := flag.NewFlagSet("add", flag.ContinueOnError)
+	total := fsx.String("total", "", "total, ej. 285.00 (negativo = reembolso)")
+	merchant := fsx.String("merchant", "", "comercio")
+	date := fsx.String("date", "", "fecha YYYY-MM-DD (default hoy)")
+	currency := fsx.String("currency", "", "moneda ISO 4217, ej. MXN (default MXN)")
+	asJSON := fsx.Bool("json", false, "salida JSON")
+	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
+		return code
+	}
+	if *total == "" || *merchant == "" {
+		cliErr(stderr, *asJSON, "uso: finbox add --total N --merchant S [--date D] [--currency C]")
+		return exitUsage
+	}
+	return withStore(stderr, *asJSON, func(e cliEnv) int {
+		row, err := command.Add(e.ctx, e.st,
+			command.AddOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency},
+			time.Now(), e.cfg.Loc)
+		if err != nil {
+			return mapErr(stderr, *asJSON, err)
+		}
+		if *asJSON {
+			json.NewEncoder(stdout).Encode(toJSON(row))
+		} else {
+			fmt.Fprintf(stdout, "agregado %s · %s · %s · %s\n", row.ShortID,
+				row.OccurredOn.Format("2006-01-02"), row.Merchant,
+				money.Format(row.AmountMinor, row.Currency))
+		}
+		return exitOK
+	})
+}
+
 func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("edit", flag.ContinueOnError)
 	total := fsx.String("total", "", "nuevo total, ej. 285.00")

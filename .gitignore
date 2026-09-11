@@ -18,3 +18,7 @@ docker-compose.override.yml
 pgdata/
 receipts/
 backups/
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

@@ -47,6 +47,28 @@ func TestCLIListJSON(t *testing.T) {
 	}
 }
 
+func TestCLIAddJSONAndUsage(t *testing.T) {
+	_ = store.NewTest(t) // migrated, clean DB
+	t.Setenv("FINBOX_DB_URL", os.Getenv("TEST_DB_URL"))
+	var out, errb bytes.Buffer
+	if code := run([]string{"finbox", "add", "--merchant", "Propina"}, &out, &errb); code != 2 {
+		t.Fatalf("missing --total: exit = %d, want 2", code)
+	}
+	out.Reset()
+	errb.Reset()
+	code := run([]string{"finbox", "add", "--total", "-120.00", "--merchant", "Zapatería", "--date", "2026-09-01", "--json"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var row map[string]any
+	if err := json.Unmarshal(out.Bytes(), &row); err != nil {
+		t.Fatalf("json: %v %s", err, out.String())
+	}
+	if row["source"] != "manual" || row["amount_minor"].(float64) != -12000 {
+		t.Fatalf("row = %+v", row)
+	}
+}
+
 func TestCLIUnknownFlagJSONError(t *testing.T) {
 	var out, errb bytes.Buffer
 	code := run([]string{"finbox", "list", "--json", "--nope"}, &out, &errb)

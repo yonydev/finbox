@@ -22,6 +22,13 @@ func TestParseMinor(t *testing.T) {
 		{"$364.00", "MXN", 36400, false},              // currency symbol tolerated
 		{"1234567890123456789012345", "MXN", 0, true}, // 25 digits overflow
 		{"922337203685477580.07", "MXN", 0, true},     // exceeds max int64
+		{"300,50", "MXN", 0, true},                    // decimal comma: reject, never read as 30050.00
+		{"0,50", "MXN", 0, true},                      // decimal comma
+		{"300 50", "MXN", 0, true},                    // interior space: reject, never glue digits
+		{"1 300,50", "MXN", 0, true},                  // es/fr paste form
+		{"1,3", "MXN", 0, true},                       // malformed thousands group
+		{"12,34.00", "MXN", 0, true},                  // malformed thousands group
+		{"-1,200.50", "MXN", -120050, false},          // signed thousands form still fine
 	}
 	for _, tc := range cases {
 		got, err := ParseMinor(tc.in, tc.cur)
@@ -31,6 +38,14 @@ func TestParseMinor(t *testing.T) {
 		}
 		if err == nil && got != tc.want {
 			t.Errorf("ParseMinor(%q,%q)=%d want %d", tc.in, tc.cur, got, tc.want)
+		}
+	}
+}
+
+func TestKnown(t *testing.T) {
+	for cur, want := range map[string]bool{"MXN": true, "usd": true, "JPY": true, "CLP": false, "XYZ": false, "": false} {
+		if Known(cur) != want {
+			t.Errorf("Known(%q) = %v, want %v", cur, !want, want)
 		}
 	}
 }

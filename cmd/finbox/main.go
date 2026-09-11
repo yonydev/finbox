@@ -30,6 +30,7 @@ func subcommands() []subcommand {
 		{"extract", "extrae un ticket local (Milestone 0)", cmdExtract},
 		{"migrate", "aplica migraciones", cmdMigrate},
 		{"list", "lista gastos recientes", cmdList},
+		{"add", "agrega un gasto manual (negativo = reembolso)", cmdAdd},
 		{"edit", "edita un gasto", cmdEdit},
 		{"void", "anula un gasto", cmdVoid},
 		{"reprocess", "reprocesa un recibo", cmdReprocess},
