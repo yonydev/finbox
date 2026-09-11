@@ -93,6 +93,28 @@ func TestListTableEscapesAndTruncatesMerchant(t *testing.T) {
 	}
 }
 
+func TestListTableMarksEditedRows(t *testing.T) {
+	edited := listRow("a3f2c9d1", "Walmart", "MXN", 36400)
+	edited.Edited = true
+	m := ListTable([]store.TxnRow{edited, listRow("b4e1d0c2", "Oxxo", "MXN", 550)})
+	if !strings.Contains(m, "Walmart ✏️") {
+		t.Errorf("edited row missing marker:\n%s", m)
+	}
+	if strings.Contains(m, "Oxxo ✏️") {
+		t.Errorf("unedited row got a marker:\n%s", m)
+	}
+	if !strings.Contains(m, "✏️ 1 (50%)") {
+		t.Errorf("footer missing edited stat:\n%s", m)
+	}
+}
+
+func TestListTableNoEditedStatWhenClean(t *testing.T) {
+	m := ListTable([]store.TxnRow{listRow("a3f2c9d1", "Walmart", "MXN", 36400)})
+	if strings.Contains(m, "✏️") {
+		t.Errorf("clean list should not mention edits:\n%s", m)
+	}
+}
+
 func TestListTableMultiCurrencyTotals(t *testing.T) {
 	m := ListTable([]store.TxnRow{
 		listRow("a3f2c9d1", "Walmart", "MXN", 36400),

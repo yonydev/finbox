@@ -33,6 +33,7 @@ type TxnRow struct {
 	ID, ShortID, Merchant, Currency, Source, ReceiptID string
 	OccurredOn                                         time.Time
 	AmountMinor                                        int64
+	Edited                                             bool // has edit_log rows; only populated by ListTransactions
 }
 
 type CurrencyTotal struct {
@@ -107,7 +108,8 @@ func (s *Store) DiscardReceipt(ctx context.Context, receiptID string, updateID i
 }
 
 func (s *Store) ListTransactions(ctx context.Context, limit, year int, month time.Month, loc *time.Location) ([]TxnRow, error) {
-	q := `select t.id, t.merchant, t.currency, t.source, coalesce(t.receipt_id::text,''), t.occurred_on, t.amount_minor
+	q := `select t.id, t.merchant, t.currency, t.source, coalesce(t.receipt_id::text,''), t.occurred_on, t.amount_minor,
+		exists(select 1 from edit_log el where el.transaction_id = t.id)
 		from transactions t where t.voided_at is null`
 	args := []any{}
 	if year != 0 {
@@ -124,7 +126,7 @@ func (s *Store) ListTransactions(ctx context.Context, limit, year int, month tim
 	var out []TxnRow
 	for rows.Next() {
 		var r TxnRow
-		if err := rows.Scan(&r.ID, &r.Merchant, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor); err != nil {
+		if err := rows.Scan(&r.ID, &r.Merchant, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor, &r.Edited); err != nil {
 			return nil, err
 		}
 		r.ShortID = r.ID[:8]

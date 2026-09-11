@@ -118,10 +118,9 @@ func TestAddValidates(t *testing.T) {
 	s := store.NewTest(t)
 	now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
 	cases := []AddOpts{
-		{Total: "0", Merchant: "X"}, // zero forbidden
-		{Total: "50"},               // merchant missing
-		{Total: "50", Merchant: "X", Currency: "pesos"},  // bad currency
-		{Total: "50", Merchant: "X", Currency: "CLP"},    // well-formed but unsupported currency
+		{Total: "0", Merchant: "X"},                      // zero forbidden
+		{Total: "50"},                                    // merchant missing
+		{Total: "50", Merchant: "X", Currency: "CLP"},    // unsupported currency (same branch rejects "pesos")
 		{Total: "50", Merchant: "X", Date: "10/09/2026"}, // bad date format
 		{Total: "abc", Merchant: "X"},                    // bad amount
 		{Total: "300,50", Merchant: "X"},                 // decimal comma must not reach the DB

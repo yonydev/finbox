@@ -108,6 +108,24 @@ func TestEditWritesLog(t *testing.T) {
 	}
 }
 
+func TestListMarksEditedTransactions(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	_, txnID := confirmed(t, s, "sha-edited-mark", 3100, 36400, time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC))
+	rows, err := s.ListTransactions(ctx, 10, 0, 0, time.UTC)
+	if err != nil || len(rows) != 1 || rows[0].Edited {
+		t.Fatalf("before edit: %v %+v", err, rows)
+	}
+	if err := s.EditTransaction(ctx, txnID, map[string]any{"merchant": "Walmart Express"},
+		[]FieldEdit{{Field: "merchant", Old: "Walmart", New: "Walmart Express"}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = s.ListTransactions(ctx, 10, 0, 0, time.UTC)
+	if err != nil || len(rows) != 1 || !rows[0].Edited {
+		t.Fatalf("after edit: %v %+v", err, rows)
+	}
+}
+
 func TestGetTransactionByID(t *testing.T) {
 	s := NewTest(t)
 	ctx := context.Background()

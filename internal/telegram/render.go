@@ -81,14 +81,20 @@ func ListTable(rows []store.TxnRow) string {
 	lines := make([]string, 0, len(rows))
 	totals := map[string]int64{}
 	var currencies []string // order of first appearance
+	edited := 0
 	for i, r := range rows {
 		if _, seen := totals[r.Currency]; !seen {
 			currencies = append(currencies, r.Currency)
 		}
 		totals[r.Currency] += r.AmountMinor
-		lines = append(lines, fmt.Sprintf("%-8s  %-5s  %*s  %s",
+		line := fmt.Sprintf("%-8s  %-5s  %*s  %s",
 			r.ShortID, r.OccurredOn.Format("02/01"), amtW, amounts[i],
-			truncateRunes(r.Merchant, merchW)))
+			truncateRunes(r.Merchant, merchW))
+		if r.Edited { // trailing so the emoji's odd width can't break column alignment
+			line += " ✏️"
+			edited++
+		}
+		lines = append(lines, line)
 	}
 	parts := make([]string, 0, len(currencies))
 	for _, c := range currencies {
@@ -96,6 +102,9 @@ func ListTable(rows []store.TxnRow) string {
 	}
 	footer := strings.Repeat("─", listTableWidth) + "\n" +
 		fmt.Sprintf("TOTAL %s · %d", strings.Join(parts, " + "), len(rows))
+	if edited > 0 { // the window's own metric, visible day to day
+		footer += fmt.Sprintf(" · ✏️ %d (%d%%)", edited, edited*100/len(rows))
+	}
 
 	body := header + "\n" + strings.Join(lines, "\n") + "\n" + footer
 	return "<pre>" + html.EscapeString(body) + "</pre>"
