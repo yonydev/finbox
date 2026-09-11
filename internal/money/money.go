@@ -3,6 +3,7 @@ package money
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 )
 
@@ -14,6 +15,17 @@ func Exponent(currency string) int {
 	}
 	return 2
 }
+
+// Known reports whether the currency is in the exponent table. Callers taking
+// user input must reject unknown codes: defaulting their exponent would store
+// amounts at the wrong scale (e.g. CLP has no minor units).
+func Known(currency string) bool {
+	_, ok := exponents[strings.ToUpper(currency)]
+	return ok
+}
+
+// thousandsForm is the only comma layout ParseMinor accepts ("1,300.50").
+var thousandsForm = regexp.MustCompile(`^-?\d{1,3}(,\d{3})+(\.\d*)?$`)
 
 // ParseMinor converts a decimal string to integer minor units using
 // integer math only. Tolerates "$", spaces and "," thousands separators.
@@ -30,13 +42,17 @@ func ParseMilli(s string) (int64, error) {
 // parseFixedPoint scales a decimal string to an integer with `decimals`
 // fraction digits, guarded against int64 overflow.
 func parseFixedPoint(s string, decimals int) (int64, error) {
-	clean := strings.Map(func(r rune) rune {
-		switch r {
-		case '$', ',', ' ':
-			return -1
+	clean := strings.ReplaceAll(strings.TrimSpace(s), "$", "")
+	if strings.Contains(clean, ",") {
+		// A comma is accepted only as a thousands separator. A decimal comma
+		// ("300,50") must fail loudly — stripping it would store a 100x amount.
+		if !thousandsForm.MatchString(clean) {
+			return 0, fmt.Errorf("monto inválido: %q (usa punto decimal, ej. 300.50)", s)
 		}
-		return r
-	}, strings.TrimSpace(s))
+		clean = strings.ReplaceAll(clean, ",", "")
+	}
+	// Interior spaces are no longer stripped: "300 50" falls through to the
+	// digit loop and errors instead of silently gluing into 30050.
 	if clean == "" {
 		return 0, fmt.Errorf("monto vacío")
 	}
