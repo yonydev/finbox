@@ -36,9 +36,9 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 
 <b>Tips</b>
 ─────────────
-📎 Ticket largo → mándalo como <b>archivo</b>, no como foto: Telegram comprime las fotos y la extracción falla.
+📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
 📸 JPEG, PNG o WebP · máx. 20 MB
-🍏 ¿iPhone dice HEIC? Ajustes → Cámara → Formatos → <i>Más compatible</i>`
+🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"
 	BtnRetry    = "🔄 Reintentar"
