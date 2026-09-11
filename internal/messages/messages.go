@@ -18,17 +18,27 @@ const (
 	ReceiptNotFound     = "recibo no encontrado"
 	NoExpenses          = "sin gastos todavía"
 	NothingPending      = "nada pendiente ✨"
-	HelpText            = `<b>finbox</b> — convierte tickets en gastos
+	HelpText            = `🧾 <b>finbox</b>
+<i>convierte tickets en gastos</i>
 
-Mándame una <b>foto de un ticket</b> y te muestro el resumen para confirmar.
+Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con un tap.
 
-/list [N] — últimos N gastos (máx. 50) default 10
-/month [mes] — total del mes (ej. /month aug, /month ago, /month 2026-01)
-/pending — recibos pendientes o fallidos
-/help — esta ayuda
+<b>Comandos</b>
+─────────────
+📋 /list <code>N</code>
+      últimos N gastos · default 10, máx. 50
+📆 /month <code>mes</code>
+      total del mes · <code>aug</code>, <code>ago</code> o <code>2026-01</code>
+⏳ /pending
+      recibos pendientes o fallidos
+❓ /help
+      esta ayuda
 
-Formatos: JPEG, PNG, WebP, como foto o como archivo. Máx. 20 MB.
-Tip: los tickets largos mándalos como <b>archivo</b> 📎 — como foto, Telegram los comprime y la extracción falla.`
+<b>Tips</b>
+─────────────
+📎 Ticket largo → mándalo como <b>archivo</b>, no como foto: Telegram comprime las fotos y la extracción falla.
+📸 JPEG, PNG o WebP · máx. 20 MB
+🍏 ¿iPhone dice HEIC? Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"
 	BtnRetry    = "🔄 Reintentar"
