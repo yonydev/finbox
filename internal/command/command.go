@@ -44,6 +44,42 @@ func Pending(ctx context.Context, st *store.Store) ([]store.Receipt, error) {
 	return st.PendingReceipts(ctx)
 }
 
+type AddOpts struct{ Total, Merchant, Date, Currency string }
+
+// Add records a manual expense — no receipt behind it. Negative totals are
+// refunds/credits; zero is rejected (so is any missing required field).
+func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *time.Location) (store.TxnRow, error) {
+	if strings.TrimSpace(o.Merchant) == "" {
+		return store.TxnRow{}, fmt.Errorf("falta el comercio (--merchant)")
+	}
+	currency := "MXN"
+	if o.Currency != "" {
+		currency = strings.ToUpper(strings.TrimSpace(o.Currency))
+		if !iso4217.MatchString(currency) {
+			return store.TxnRow{}, fmt.Errorf("moneda inválida %q (ISO 4217, ej. MXN)", o.Currency)
+		}
+	}
+	minor, err := money.ParseMinor(o.Total, currency)
+	if err != nil {
+		return store.TxnRow{}, err
+	}
+	if minor == 0 {
+		return store.TxnRow{}, fmt.Errorf("el total no puede ser 0 (usa negativo para reembolsos)")
+	}
+	y, m, d := now.In(loc).Date()
+	day := time.Date(y, m, d, 0, 0, 0, 0, loc)
+	if o.Date != "" {
+		day, err = time.ParseInLocation("2006-01-02", o.Date, loc)
+		if err != nil {
+			return store.TxnRow{}, fmt.Errorf("fecha inválida %q (usa YYYY-MM-DD)", o.Date)
+		}
+	}
+	return st.AddTransaction(ctx, store.NewTransaction{
+		OccurredOn: day, Merchant: strings.TrimSpace(o.Merchant),
+		AmountMinor: minor, Currency: currency, Source: "manual",
+	})
+}
+
 type EditOpts struct{ Total, Merchant, Date, Currency string }
 
 // resolveTxn maps an id prefix of either kind to the active transaction id.

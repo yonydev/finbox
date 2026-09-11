@@ -46,6 +46,65 @@ func TestEditRejectsNegativeTotal(t *testing.T) {
 	}
 }
 
+func TestAddManualExpense(t *testing.T) {
+	s := store.NewTest(t)
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	row, err := Add(context.Background(), s, AddOpts{Total: "285.00", Merchant: "Taller García", Date: "2026-09-01"}, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Source != "manual" || row.ReceiptID != "" || row.AmountMinor != 28500 ||
+		row.Currency != "MXN" || row.OccurredOn.Format("2006-01-02") != "2026-09-01" {
+		t.Fatalf("row = %+v", row)
+	}
+	rows, err := List(context.Background(), s, 10, "", now, time.UTC)
+	if err != nil || len(rows) != 1 || rows[0].ID != row.ID {
+		t.Fatalf("added txn not listed: %v %+v", err, rows)
+	}
+}
+
+func TestAddRefundNegativeTotal(t *testing.T) {
+	s := store.NewTest(t)
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	row, err := Add(context.Background(), s, AddOpts{Total: "-120.00", Merchant: "Zapatería"}, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.AmountMinor != -12000 {
+		t.Fatalf("row = %+v", row)
+	}
+}
+
+func TestAddDefaultsDateToToday(t *testing.T) {
+	s := store.NewTest(t)
+	loc, _ := time.LoadLocation("America/Mexico_City")
+	now := time.Date(2026, 9, 11, 2, 0, 0, 0, time.UTC) // still sep 10 in CDMX
+	row, err := Add(context.Background(), s, AddOpts{Total: "50", Merchant: "Propina"}, now, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := row.OccurredOn.Format("2006-01-02"); got != "2026-09-10" {
+		t.Fatalf("occurred_on = %s, want 2026-09-10 (local day)", got)
+	}
+}
+
+func TestAddValidates(t *testing.T) {
+	s := store.NewTest(t)
+	now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	cases := []AddOpts{
+		{Total: "0", Merchant: "X"}, // zero forbidden
+		{Total: "50"},               // merchant missing
+		{Total: "50", Merchant: "X", Currency: "pesos"},  // bad currency
+		{Total: "50", Merchant: "X", Date: "10/09/2026"}, // bad date format
+		{Total: "abc", Merchant: "X"},                    // bad amount
+	}
+	for i, o := range cases {
+		if _, err := Add(context.Background(), s, o, now, time.UTC); err == nil {
+			t.Errorf("case %d (%+v): want error", i, o)
+		}
+	}
+}
+
 func TestVoidByPrefix(t *testing.T) {
 	s, _, txnID := seed(t)
 	got, err := Void(context.Background(), s, txnID[:8])

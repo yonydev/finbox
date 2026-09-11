@@ -42,6 +42,18 @@ type CurrencyTotal struct {
 
 type FieldEdit struct{ Field, Old, New string }
 
+// AddTransaction inserts a manual (receipt-less) transaction and returns it.
+func (s *Store) AddTransaction(ctx context.Context, t NewTransaction) (TxnRow, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `insert into transactions (occurred_on, merchant, amount_minor, currency, source)
+		values ($1,$2,$3,$4,$5) returning id`,
+		t.OccurredOn, t.Merchant, t.AmountMinor, t.Currency, t.Source).Scan(&id)
+	if err != nil {
+		return TxnRow{}, err
+	}
+	return s.GetTransactionByID(ctx, id)
+}
+
 func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTransaction, updateID int64) (string, bool, error) {
 	var txnID string
 	confirmed := false
