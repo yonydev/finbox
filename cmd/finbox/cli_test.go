@@ -87,8 +87,16 @@ func TestCLIListHelpExitsZero(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "-limit") {
-		t.Errorf("stdout %q missing -limit", out.String())
+	if !strings.Contains(out.String(), "--limit") {
+		t.Errorf("stdout %q missing --limit", out.String())
+	}
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"finbox", "void", "--help"}, &out, &errb); code != 0 {
+		t.Fatalf("void --help exit = %d, want 0 (stderr: %s)", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "void <id>") || !strings.Contains(out.String(), "--json") {
+		t.Errorf("void help %q should show positional <id> and --json", out.String())
 	}
 }
 

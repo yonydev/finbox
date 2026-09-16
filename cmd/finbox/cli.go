@@ -73,6 +73,23 @@ func popID(argv []string) (string, []string) {
 	return "", argv
 }
 
+// setUsage replaces fsx.Usage: the default one can't show positional args
+// (popID strips them before Parse ever runs) and prints flags single-dash.
+// This prints the full "uso:" line plus the flags GNU-style (--flag).
+func setUsage(fsx *flag.FlagSet, usage string) {
+	fsx.Usage = func() {
+		w := fsx.Output()
+		fmt.Fprintln(w, usage)
+		fsx.VisitAll(func(f *flag.Flag) {
+			arg, help := flag.UnquoteUsage(f)
+			if arg != "" {
+				arg = " " + arg
+			}
+			fmt.Fprintf(w, "  --%s%s\n        %s\n", f.Name, arg, help)
+		})
+	}
+}
+
 // hasJSONFlag scans the raw (unparsed) argv for --json/-json. Used only when
 // flag.Parse itself failed, so the *bool a normal fsx.Bool("json", ...) would
 // give us can't be trusted — parsing never got that far.
@@ -126,6 +143,7 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 	limit := fsx.Int("limit", 10, "máx. de filas")
 	month := fsx.String("month", "", "mes: aug | ago | 2026-08")
 	asJSON := fsx.Bool("json", false, "salida JSON")
+	setUsage(fsx, "uso: finbox list [--limit N] [--month M] [--json]")
 	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
 		return code
 	}
@@ -157,11 +175,13 @@ func cmdAdd(argv []string, stdout, stderr io.Writer) int {
 	date := fsx.String("date", "", "fecha YYYY-MM-DD (default hoy)")
 	currency := fsx.String("currency", "", "moneda ISO 4217, ej. MXN (default MXN)")
 	asJSON := fsx.Bool("json", false, "salida JSON")
+	const usage = "uso: finbox add --total N --merchant S [--date D] [--currency C] [--json]"
+	setUsage(fsx, usage)
 	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
 		return code
 	}
 	if *total == "" || *merchant == "" {
-		cliErr(stderr, *asJSON, "uso: finbox add --total N --merchant S [--date D] [--currency C]")
+		cliErr(stderr, *asJSON, usage)
 		return exitUsage
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
@@ -189,12 +209,14 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	date := fsx.String("date", "", "nueva fecha YYYY-MM-DD")
 	currency := fsx.String("currency", "", "nueva moneda ISO 4217, ej. MXN")
 	asJSON := fsx.Bool("json", false, "salida JSON")
+	const usage = "uso: finbox edit <id> [--total N] [--merchant S] [--date D] [--currency C] [--json]"
+	setUsage(fsx, usage)
 	id, rest := popID(argv)
 	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
 		return code
 	}
 	if id == "" {
-		cliErr(stderr, *asJSON, "uso: finbox edit <id> [--total N] [--merchant S] [--date D] [--currency C]")
+		cliErr(stderr, *asJSON, usage)
 		return exitUsage
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
@@ -216,12 +238,14 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 func cmdVoid(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("void", flag.ContinueOnError)
 	asJSON := fsx.Bool("json", false, "salida JSON")
+	const usage = "uso: finbox void <id> [--json]"
+	setUsage(fsx, usage)
 	id, rest := popID(argv)
 	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
 		return code
 	}
 	if id == "" {
-		cliErr(stderr, *asJSON, "uso: finbox void <id>")
+		cliErr(stderr, *asJSON, usage)
 		return exitUsage
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
@@ -244,12 +268,14 @@ func cmdVoid(argv []string, stdout, stderr io.Writer) int {
 func cmdReprocess(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("reprocess", flag.ContinueOnError)
 	asJSON := fsx.Bool("json", false, "salida JSON")
+	const usage = "uso: finbox reprocess <receipt-id> [--json]"
+	setUsage(fsx, usage)
 	id, rest := popID(argv)
 	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
 		return code
 	}
 	if id == "" {
-		cliErr(stderr, *asJSON, "uso: finbox reprocess <receipt-id>")
+		cliErr(stderr, *asJSON, usage)
 		return exitUsage
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {

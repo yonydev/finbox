@@ -16,16 +16,17 @@ import (
 
 func cmdExtract(argv []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
-	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "salida JSON")
+	const usage = "uso: finbox extract <imagen> [--json]"
+	setUsage(fs, usage)
 	// stdlib flag stops parsing at the first positional arg, so pop the
 	// path FIRST — otherwise `finbox extract foto.jpg --json` never sees --json.
 	path, argv := popID(argv)
-	if err := fs.Parse(argv); err != nil {
-		return exitUsage
+	if ok, code := parseFlags(fs, argv, stdout, stderr); !ok {
+		return code
 	}
 	if path == "" {
-		fmt.Fprintln(stderr, "uso: finbox extract <imagen> [--json]")
+		fmt.Fprintln(stderr, usage)
 		return exitUsage
 	}
 	img, err := os.ReadFile(path)
