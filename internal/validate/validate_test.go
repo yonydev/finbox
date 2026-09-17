@@ -70,6 +70,37 @@ func TestRunSoftFlags(t *testing.T) {
 	}
 }
 
+func TestUnknownCurrencyAssumesMXN(t *testing.T) {
+	ex := base()
+	ex.Currency = "MX$" // what a digital Uber receipt's text layer prints
+	v, err := Run(ex, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Currency != "MXN" {
+		t.Errorf("currency = %q, want MXN", v.Currency)
+	}
+	if !strings.Contains(strings.Join(v.Warnings, "|"), "no reconocida") {
+		t.Errorf("warnings %v missing unknown-currency warning", v.Warnings)
+	}
+}
+
+func TestLongFieldsCapped(t *testing.T) {
+	ex := base()
+	ex.Merchant = strings.Repeat("á", 500)
+	ex.Items[0].Name = strings.Repeat("é", 500)
+	v, err := Run(ex, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len([]rune(v.Merchant)); n != 120 {
+		t.Errorf("merchant runes = %d, want 120", n)
+	}
+	if n := len([]rune(v.Items[0].Name)); n != 80 {
+		t.Errorf("item name runes = %d, want 80", n)
+	}
+}
+
 func TestSumSkippedWhenUnpriced(t *testing.T) {
 	ex := base()
 	ex.Items[1].Amount = "" // unpriced line → sum check must not fire

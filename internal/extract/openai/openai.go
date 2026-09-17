@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	oa "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -34,7 +35,9 @@ func New(apiKey, model string) *Extractor {
 }
 
 func (e *Extractor) client() oa.Client {
-	opts := []option.RequestOption{option.WithAPIKey(e.apiKey)}
+	// The pipeline already retries 3×; the SDK's default MaxRetries(2) would
+	// multiply that to 9 HTTP attempts per receipt.
+	opts := []option.RequestOption{option.WithAPIKey(e.apiKey), option.WithMaxRetries(0)}
 	if e.baseURL != "" {
 		opts = append(opts, option.WithBaseURL(e.baseURL))
 	}
@@ -42,6 +45,10 @@ func (e *Extractor) client() oa.Client {
 }
 
 func (e *Extractor) Extract(ctx context.Context, image []byte, mime string) (extract.Result, error) {
+	// The bot's poll loop is sequential with no deadline of its own; without
+	// this bound one slow request blocks confirmations and commands.
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(image))
 	client := e.client()
 	resp, err := client.Chat.Completions.New(ctx, oa.ChatCompletionNewParams{
