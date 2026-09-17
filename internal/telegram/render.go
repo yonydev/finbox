@@ -89,7 +89,7 @@ func ListTable(rows []store.TxnRow) string {
 		totals[r.Currency] += r.AmountMinor
 		line := fmt.Sprintf("%-8s  %-5s  %*s  %s",
 			r.ShortID, r.OccurredOn.Format("02/01"), amtW, amounts[i],
-			truncateRunes(r.Merchant, merchW))
+			validate.CapRunes(r.Merchant, merchW))
 		if r.Edited { // trailing so the emoji's odd width can't break column alignment
 			line += " ✏️"
 			edited++
@@ -108,16 +108,6 @@ func ListTable(rows []store.TxnRow) string {
 
 	body := header + "\n" + strings.Join(lines, "\n") + "\n" + footer
 	return "<pre>" + html.EscapeString(body) + "</pre>"
-}
-
-// truncateRunes caps s at max runes, marking the cut with an ellipsis.
-// Rune-based: merchants carry accents, and a byte cut could split one.
-func truncateRunes(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max-1]) + "…"
 }
 
 func MonthSummary(year int, month time.Month, totals []store.CurrencyTotal, count int) string {

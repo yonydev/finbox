@@ -66,8 +66,20 @@ func Scrub(s string) string {
 	})
 }
 
+// CapRunes caps s at max runes (rune-based: accents must not be split).
+// Card text fields must stay bounded: unbounded model output can push the
+// Telegram message past 4096 chars, the edit fails (only logged), and the
+// receipt strands in awaiting_confirm with no buttons.
+func CapRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
 func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, error) {
-	v := Validated{Merchant: strings.TrimSpace(Scrub(ex.Merchant))}
+	v := Validated{Merchant: CapRunes(strings.TrimSpace(Scrub(ex.Merchant)), 120)}
 	if v.Merchant == "" {
 		return v, fmt.Errorf("comercio ilegible")
 	}
@@ -75,6 +87,12 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 	if v.Currency == "" {
 		v.Currency = "MXN"
 		v.Warnings = append(v.Warnings, "⚠️ moneda ilegible — asumí MXN")
+	} else if !money.Known(v.Currency) {
+		// The DB check (^[A-Z]{3}$) would reject e.g. "MX$" at confirm time,
+		// where the bot swallows the error — the receipt would be stuck
+		// unconfirmable forever. Fall back like the empty case instead.
+		v.Warnings = append(v.Warnings, fmt.Sprintf("⚠️ moneda no reconocida (%s) — asumí MXN", CapRunes(v.Currency, 12)))
+		v.Currency = "MXN"
 	}
 	total, err := money.ParseMinor(ex.Total, v.Currency)
 	if err != nil {
@@ -95,7 +113,7 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 	allPriced := true
 	var sum int64
 	for i, it := range ex.Items {
-		item := Item{Position: i + 1, Name: strings.TrimSpace(Scrub(it.Name))}
+		item := Item{Position: i + 1, Name: CapRunes(strings.TrimSpace(Scrub(it.Name)), 80)}
 		if q := strings.TrimSpace(it.Quantity); q != "" {
 			if qm, err := money.ParseMilli(q); err == nil {
 				item.QuantityMilli = &qm
