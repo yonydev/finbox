@@ -27,6 +27,7 @@ type NewTransaction struct {
 	Currency    string
 	Source      string
 	Items       []NewItem
+	Edits       []FieldEdit // corrections applied before confirm (reply-parser); logged in the same tx
 }
 
 type TxnRow struct {
@@ -41,7 +42,11 @@ type CurrencyTotal struct {
 	AmountMinor int64
 }
 
-type FieldEdit struct{ Field, Old, New string }
+// FieldEdit is one edit_log row; Source "" means 'cli'.
+type FieldEdit struct{ Field, Old, New, Source string }
+
+const insertEditLog = `insert into edit_log (transaction_id, field, old_value, new_value, source)
+	values ($1,$2,$3,$4,coalesce(nullif($5,''),'cli'))`
 
 // AddTransaction inserts a manual (receipt-less) transaction and returns it.
 func (s *Store) AddTransaction(ctx context.Context, t NewTransaction) (TxnRow, error) {
@@ -55,12 +60,16 @@ func (s *Store) AddTransaction(ctx context.Context, t NewTransaction) (TxnRow, e
 	return s.GetTransactionByID(ctx, id)
 }
 
-func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTransaction, updateID int64) (string, bool, error) {
+// ConfirmReceipt turns an awaiting_confirm receipt into a transaction. A
+// non-nil ifUnchangedSince makes it a no-op when the receipt was modified
+// after that instant — the caller built t from a card that may be stale.
+func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTransaction, updateID int64, ifUnchangedSince *time.Time) (string, bool, error) {
 	var txnID string
 	confirmed := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx,
-			`update receipts set status='confirmed', updated_at=now() where id=$1 and status='awaiting_confirm'`, receiptID)
+			`update receipts set status='confirmed', updated_at=now()
+			where id=$1 and status='awaiting_confirm' and ($2::timestamptz is null or updated_at=$2)`, receiptID, ifUnchangedSince)
 		if err != nil {
 			return err
 		}
@@ -77,6 +86,11 @@ func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTrans
 		for _, it := range t.Items {
 			if _, err := tx.Exec(ctx, `insert into transaction_items (transaction_id, position, name, quantity_milli, amount_minor)
 				values ($1,$2,$3,$4,$5)`, txnID, it.Position, it.Name, it.QuantityMilli, it.AmountMinor); err != nil {
+				return err
+			}
+		}
+		for _, e := range t.Edits {
+			if _, err := tx.Exec(ctx, insertEditLog, txnID, e.Field, e.Old, e.New, e.Source); err != nil {
 				return err
 			}
 		}
@@ -206,8 +220,7 @@ func (s *Store) EditTransaction(ctx context.Context, txnID string, set map[strin
 			return ErrNotFound
 		}
 		for _, e := range edits {
-			if _, err := tx.Exec(ctx, `insert into edit_log (transaction_id, field, old_value, new_value) values ($1,$2,$3,$4)`,
-				txnID, e.Field, e.Old, e.New); err != nil {
+			if _, err := tx.Exec(ctx, insertEditLog, txnID, e.Field, e.Old, e.New, e.Source); err != nil {
 				return err
 			}
 		}

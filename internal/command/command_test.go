@@ -20,7 +20,7 @@ func seed(t *testing.T) (*store.Store, string, string) {
 	txnID, ok, err := s.ConfirmReceipt(ctx, r.ID, store.NewTransaction{
 		OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
 		Merchant:   "Tacos", AmountMinor: 18500, Currency: "MXN", Source: "receipt",
-	}, 0)
+	}, 0, nil)
 	if err != nil || !ok {
 		t.Fatal(err)
 	}

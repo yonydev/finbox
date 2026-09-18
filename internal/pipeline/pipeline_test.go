@@ -131,7 +131,7 @@ func confirm(t *testing.T, d Deps, receiptID string) string {
 	t.Helper()
 	txnID, ok, err := d.Store.ConfirmReceipt(context.Background(), receiptID, store.NewTransaction{
 		OccurredOn: now, Merchant: "Walmart", AmountMinor: 36400, Currency: "MXN", Source: "receipt",
-	}, 0)
+	}, 0, nil)
 	if err != nil || !ok {
 		t.Fatalf("confirm: ok=%v err=%v", ok, err)
 	}

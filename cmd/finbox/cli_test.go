@@ -26,7 +26,7 @@ func cliStore(t *testing.T) (*store.Store, string) {
 	txnID, _, _ := s.ConfirmReceipt(ctx, r.ID, store.NewTransaction{
 		OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
 		Merchant:   "Walmart", AmountMinor: 36400, Currency: "MXN", Source: "receipt",
-	}, 0)
+	}, 0, nil)
 	return s, txnID
 }
 

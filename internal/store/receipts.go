@@ -21,8 +21,9 @@ func (e DuplicateBlobError) Error() string {
 type Receipt struct {
 	ID, BlobKey, BlobSHA256, Status, FailReason, Model string
 	Extraction                                         []byte
+	ExtractionRaw                                      []byte // nil until the first reply-correction copies the model output here
 	TgMessageID, TgChatID, TgCardMessageID             int64
-	CreatedAt                                          time.Time
+	CreatedAt, UpdatedAt                               time.Time
 }
 
 type CreateReceiptParams struct {
@@ -31,13 +32,13 @@ type CreateReceiptParams struct {
 }
 
 const receiptCols = `id, blob_key, blob_sha256, status, coalesce(fail_reason,''),
-	coalesce(model,''), coalesce(extraction,'null'::jsonb),
-	coalesce(tg_message_id,0), coalesce(tg_chat_id,0), coalesce(tg_card_message_id,0), created_at`
+	coalesce(model,''), coalesce(extraction,'null'::jsonb), extraction_raw,
+	coalesce(tg_message_id,0), coalesce(tg_chat_id,0), coalesce(tg_card_message_id,0), created_at, updated_at`
 
 func scanReceipt(row pgx.Row) (Receipt, error) {
 	var r Receipt
 	err := row.Scan(&r.ID, &r.BlobKey, &r.BlobSHA256, &r.Status, &r.FailReason,
-		&r.Model, &r.Extraction, &r.TgMessageID, &r.TgChatID, &r.TgCardMessageID, &r.CreatedAt)
+		&r.Model, &r.Extraction, &r.ExtractionRaw, &r.TgMessageID, &r.TgChatID, &r.TgCardMessageID, &r.CreatedAt, &r.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrNotFound
 	}
@@ -64,9 +65,31 @@ func (s *Store) GetReceipt(ctx context.Context, id string) (Receipt, error) {
 	return scanReceipt(s.pool.QueryRow(ctx, `select `+receiptCols+` from receipts where id=$1`, id))
 }
 
+// SetExtraction stores a fresh model output; it also drops extraction_raw so a
+// later confirm never diffs user corrections against a superseded extraction.
 func (s *Store) SetExtraction(ctx context.Context, id string, extraction []byte, model string) error {
-	_, err := s.pool.Exec(ctx, `update receipts set extraction=$2, model=$3, updated_at=now() where id=$1`, id, extraction, model)
+	_, err := s.pool.Exec(ctx, `update receipts set extraction=$2, extraction_raw=null, model=$3, updated_at=now() where id=$1`, id, extraction, model)
 	return err
+}
+
+// AmendExtraction merges a user correction into the stored extraction of a
+// receipt still awaiting confirmation (or failed — the correction may be what
+// it needed). The raw model output is copied aside only the first time, so a
+// redelivered reply is a no-op for the metric. Returns the status BEFORE the
+// patch and the merged extraction; ErrNotFound when the status disallows it.
+func (s *Store) AmendExtraction(ctx context.Context, id string, patch []byte) (string, []byte, error) {
+	var status string
+	var extraction []byte
+	err := s.pool.QueryRow(ctx, `update receipts set
+		extraction_raw = coalesce(extraction_raw, extraction, '{}'::jsonb),
+		extraction     = coalesce(extraction, '{}'::jsonb) || $2,
+		updated_at     = now()
+		where id=$1 and status in ('awaiting_confirm','failed')
+		returning status, extraction`, id, patch).Scan(&status, &extraction)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	return status, extraction, err
 }
 
 func (s *Store) SetCard(ctx context.Context, id string, chatID, cardMsgID int64) error {
