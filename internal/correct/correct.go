@@ -35,7 +35,7 @@ var numberTok = regexp.MustCompile(`^-?\$?[\d.,]+$`)
 // Parse resolves text against now (already in the user's location) and the
 // receipt's currency ("" = MXN), which the total is validated against.
 func Parse(text string, now time.Time, currency string) (Fields, error) {
-	toks := tokens(text)
+	toks := strings.Fields(strings.ReplaceAll(text, "$ ", "$")) // "$ 285" → "$285"
 	if len(toks) == 0 {
 		return Fields{}, ErrUnparseable
 	}
@@ -70,20 +70,6 @@ func Parse(text string, now time.Time, currency string) (Fields, error) {
 		i = j
 	}
 	return normalize(raw, now, currency)
-}
-
-// tokens splits on whitespace and glues a lone "$" to the amount after it.
-func tokens(text string) []string {
-	fs := strings.Fields(text)
-	out := fs[:0]
-	for i := 0; i < len(fs); i++ {
-		if fs[i] == "$" && i+1 < len(fs) {
-			fs[i+1] = "$" + fs[i+1]
-			continue
-		}
-		out = append(out, fs[i])
-	}
-	return out
 }
 
 // bare classifies keyword-less tokens one by one. Words only become a

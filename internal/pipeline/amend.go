@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,32 +22,11 @@ import (
 // transition, same shape as runExtraction.
 func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now time.Time) (Result, error) {
 	res := Result{ReceiptID: receiptID, Outcome: OutcomeRejected}
-	rec, err := d.Store.GetReceipt(ctx, receiptID)
-	if err != nil {
-		return Result{}, err
-	}
-	switch rec.Status {
-	case "pending":
-		res.FailReason = messages.ReceiptStillReading
-		return res, nil
-	case "confirmed":
-		res.FailReason = messages.AlreadySaved
-		return res, nil
-	case "discarded":
-		res.FailReason = messages.ReceiptInactive
-		return res, nil
-	}
-	var stored extract.Extraction
-	_ = json.Unmarshal(rec.Extraction, &stored) // "null" or {} on a failed receipt is fine: zero value
 	patch := map[string]string{}
 	if f.Total != "" {
 		// validate.Run rejects non-positive totals; persisting one would strand
-		// the card unconfirmable, so check before the write
-		currency := f.Currency
-		if currency == "" {
-			currency = stored.Currency
-		}
-		minor, err := money.ParseMinor(f.Total, currency)
+		// the card unconfirmable, so check the sign before the write
+		minor, err := money.ParseMinor(f.Total, f.Currency)
 		if err != nil {
 			res.FailReason = err.Error()
 			return res, nil
@@ -67,9 +47,20 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 		patch["currency"] = f.Currency
 	}
 	raw, _ := json.Marshal(patch)
-	prev, merged, err := d.Store.AmendExtraction(ctx, rec.ID, raw)
-	if errors.Is(err, store.ErrNotFound) { // status changed under us
-		res.FailReason = messages.ReceiptInactive
+	prev, merged, err := d.Store.AmendExtraction(ctx, receiptID, raw)
+	if errors.Is(err, store.ErrNotFound) {
+		rec, err := d.Store.GetReceipt(ctx, receiptID)
+		if err != nil {
+			return Result{}, err
+		}
+		switch rec.Status {
+		case "pending":
+			res.FailReason = messages.ReceiptStillReading
+		case "confirmed":
+			res.FailReason = messages.AlreadySaved
+		default:
+			res.FailReason = messages.ReceiptInactive
+		}
 		return res, nil
 	}
 	if err != nil {
@@ -84,7 +75,7 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 		// progressive correction: the patch stays, the receipt stays (or
 		// becomes) failed and the card says what is still missing
 		if prev != "failed" {
-			if _, terr := d.Store.Transition(ctx, rec.ID, prev, "failed", verr.Error()); terr != nil {
+			if _, terr := d.Store.Transition(ctx, receiptID, prev, "failed", verr.Error()); terr != nil {
 				return Result{}, terr
 			}
 		}
@@ -92,19 +83,13 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 		return res, nil
 	}
 	if f.Total != "" { // the human is the authority on the total
-		kept := v.Warnings[:0]
-		for _, w := range v.Warnings {
-			if !strings.HasPrefix(w, validate.ItemsWarnPrefix) {
-				kept = append(kept, w)
-			}
-		}
-		v.Warnings = kept
+		v.Warnings = slices.DeleteFunc(v.Warnings, func(w string) bool { return strings.HasPrefix(w, validate.ItemsWarnPrefix) })
 	}
 	if dup, err := d.Store.HasDuplicate(ctx, v.OccurredOn, v.AmountMinor); err == nil && dup {
 		v.Warnings = append(v.Warnings, "⚠️ posible duplicado: ya hay un gasto con esa fecha y monto")
 	}
 	if prev == "failed" {
-		if _, err := d.Store.Transition(ctx, rec.ID, "failed", "awaiting_confirm", ""); err != nil {
+		if _, err := d.Store.Transition(ctx, receiptID, "failed", "awaiting_confirm", ""); err != nil {
 			return Result{}, err
 		}
 	}

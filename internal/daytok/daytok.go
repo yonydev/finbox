@@ -22,39 +22,19 @@ func Parse(tok string, now time.Time) (time.Time, error) {
 	if off, ok := relative[tok]; ok {
 		return time.Date(y, m, d+off, 0, 0, 0, 0, now.Location()), nil
 	}
-	parts := strings.Split(strings.ReplaceAll(tok, "-", "/"), "/")
-	nums := make([]int, len(parts))
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return time.Time{}, errInvalid(tok)
+	tok = strings.ReplaceAll(tok, "-", "/")
+	for _, layout := range []string{"2/1/2006", "2006/1/2"} {
+		if t, err := time.ParseInLocation(layout, tok, now.Location()); err == nil {
+			return t, nil
 		}
-		nums[i] = n
 	}
-	var day, month, year int
-	switch {
-	case len(nums) == 2:
-		day, month, year = nums[0], nums[1], 0
-	case len(nums) == 3 && len(parts[0]) == 4: // ISO: 4-digit year first
-		year, month, day = nums[0], nums[1], nums[2]
-	case len(nums) == 3 && len(parts[2]) == 4:
-		day, month, year = nums[0], nums[1], nums[2]
-	default:
-		return time.Time{}, errInvalid(tok)
+	// DD/MM: this year, unless that is still ahead of us → most recent = last year
+	t, err := time.ParseInLocation("2/1/2006", tok+"/"+strconv.Itoa(y), now.Location())
+	if err != nil {
+		return time.Time{}, fmt.Errorf("fecha inválida: %q (usa DD/MM, YYYY-MM-DD, hoy o ayer)", tok)
 	}
-	if year == 0 {
-		year = y
-	}
-	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, now.Location())
-	if t.Day() != day || t.Month() != time.Month(month) || t.Year() != year { // time.Date normalizes 29/02 → 1-mar
-		return time.Time{}, errInvalid(tok)
-	}
-	if len(nums) == 2 && t.After(now) { // hasn't happened yet this year → most recent = last year
+	if t.After(now) {
 		t = t.AddDate(-1, 0, 0)
 	}
 	return t, nil
-}
-
-func errInvalid(tok string) error {
-	return fmt.Errorf("fecha inválida: %q (usa DD/MM, YYYY-MM-DD, hoy o ayer)", tok)
 }
