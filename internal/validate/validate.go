@@ -26,6 +26,10 @@ type Validated struct {
 	Warnings    []string
 }
 
+// ItemsWarnPrefix starts the items-vs-total warning; callers that trust the
+// total (a human typed it) drop warnings with this prefix.
+const ItemsWarnPrefix = "⚠️ los items suman"
+
 // digit runs possibly separated by single spaces/dashes
 var digitRun = regexp.MustCompile(`\d(?:[ -]?\d)+`)
 
@@ -133,7 +137,7 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 		v.Items = append(v.Items, item)
 	}
 	if len(v.Items) > 0 && allPriced && sum != total {
-		v.Warnings = append(v.Warnings, fmt.Sprintf("⚠️ los items suman %s, el total dice %s",
+		v.Warnings = append(v.Warnings, fmt.Sprintf(ItemsWarnPrefix+" %s, el total dice %s",
 			money.Format(sum, v.Currency), money.Format(total, v.Currency)))
 	}
 	return v, nil
