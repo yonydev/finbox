@@ -30,7 +30,7 @@ func seed(t *testing.T) (*store.Store, string, string) {
 func TestEditByReceiptPrefixUpdatesTotal(t *testing.T) {
 	s, rID, txnID := seed(t)
 	ctx := context.Background()
-	row, err := Edit(ctx, s, rID[:8], EditOpts{Total: "285.00"}, time.UTC)
+	row, err := Edit(ctx, s, rID[:8], EditOpts{Total: "285.00"}, time.Now(), time.UTC)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,27 +39,40 @@ func TestEditByReceiptPrefixUpdatesTotal(t *testing.T) {
 	}
 }
 
+func TestEditShortDateAndSource(t *testing.T) {
+	s, _, txnID := seed(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	row, err := Edit(ctx, s, txnID[:8], EditOpts{Date: "ayer", Source: "reply"}, now, time.UTC)
+	if err != nil || row.OccurredOn.Format("2006-01-02") != "2026-09-17" {
+		t.Fatalf("row = %+v err = %v", row, err)
+	}
+	if _, err := Edit(ctx, s, txnID[:8], EditOpts{Date: "32/09"}, now, time.UTC); err == nil {
+		t.Fatal("impossible date must error")
+	}
+}
+
 func TestEditAllowsNegativeRejectsZero(t *testing.T) {
 	s, _, txnID := seed(t)
-	row, err := Edit(context.Background(), s, txnID[:8], EditOpts{Total: "-5.00"}, time.UTC)
+	row, err := Edit(context.Background(), s, txnID[:8], EditOpts{Total: "-5.00"}, time.Now(), time.UTC)
 	if err != nil || row.AmountMinor != -500 {
 		t.Fatalf("refund edit: %v %+v", err, row)
 	}
-	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Total: "0"}, time.UTC); err == nil {
+	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Total: "0"}, time.Now(), time.UTC); err == nil {
 		t.Fatal("want error: zero total")
 	}
 }
 
 func TestEditCurrencyExponentChangeRequiresTotal(t *testing.T) {
 	s, _, txnID := seed(t) // seeded as 18500 MXN (exponent 2)
-	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "JPY"}, time.UTC); err == nil {
+	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "JPY"}, time.Now(), time.UTC); err == nil {
 		t.Fatal("want error: exponent change without --total silently rescales the amount")
 	}
-	row, err := Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "USD"}, time.UTC)
+	row, err := Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "USD"}, time.Now(), time.UTC)
 	if err != nil || row.Currency != "USD" || row.AmountMinor != 18500 {
 		t.Fatalf("same-exponent relabel should pass: %v %+v", err, row)
 	}
-	row, err = Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "JPY", Total: "185"}, time.UTC)
+	row, err = Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "JPY", Total: "185"}, time.Now(), time.UTC)
 	if err != nil || row.Currency != "JPY" || row.AmountMinor != 185 {
 		t.Fatalf("exponent change with total should pass: %v %+v", err, row)
 	}
@@ -67,7 +80,7 @@ func TestEditCurrencyExponentChangeRequiresTotal(t *testing.T) {
 
 func TestEditRejectsUnknownCurrency(t *testing.T) {
 	s, _, txnID := seed(t)
-	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "CLP", Total: "300"}, time.UTC); err == nil {
+	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Currency: "CLP", Total: "300"}, time.Now(), time.UTC); err == nil {
 		t.Fatal("want error: unsupported currency would store a wrong-scale amount")
 	}
 }
@@ -118,12 +131,12 @@ func TestAddValidates(t *testing.T) {
 	s := store.NewTest(t)
 	now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
 	cases := []AddOpts{
-		{Total: "0", Merchant: "X"},                      // zero forbidden
-		{Total: "50"},                                    // merchant missing
-		{Total: "50", Merchant: "X", Currency: "CLP"},    // unsupported currency (same branch rejects "pesos")
-		{Total: "50", Merchant: "X", Date: "10/09/2026"}, // bad date format
-		{Total: "abc", Merchant: "X"},                    // bad amount
-		{Total: "300,50", Merchant: "X"},                 // decimal comma must not reach the DB
+		{Total: "0", Merchant: "X"},                   // zero forbidden
+		{Total: "50"},                                 // merchant missing
+		{Total: "50", Merchant: "X", Currency: "CLP"}, // unsupported currency (same branch rejects "pesos")
+		{Total: "50", Merchant: "X", Date: "32/09"},   // impossible date
+		{Total: "abc", Merchant: "X"},                 // bad amount
+		{Total: "300,50", Merchant: "X"},              // decimal comma must not reach the DB
 	}
 	for i, o := range cases {
 		if _, err := Add(context.Background(), s, o, now, time.UTC); err == nil {

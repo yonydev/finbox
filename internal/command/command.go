@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"finbox/internal/daytok"
 	"finbox/internal/money"
 	"finbox/internal/monthtok"
 	"finbox/internal/pipeline"
@@ -63,13 +64,9 @@ func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *ti
 	if minor == 0 {
 		return store.TxnRow{}, fmt.Errorf("el total no puede ser 0 (usa negativo para reembolsos)")
 	}
-	y, m, d := now.In(loc).Date()
-	day := time.Date(y, m, d, 0, 0, 0, 0, loc)
-	if o.Date != "" {
-		day, err = time.ParseInLocation("2006-01-02", o.Date, loc)
-		if err != nil {
-			return store.TxnRow{}, fmt.Errorf("fecha inválida %q (usa YYYY-MM-DD)", o.Date)
-		}
+	day, err := daytok.Parse(o.Date, now.In(loc))
+	if err != nil {
+		return store.TxnRow{}, err
 	}
 	return st.AddTransaction(ctx, store.NewTransaction{
 		OccurredOn: day, Merchant: strings.TrimSpace(o.Merchant),
@@ -77,7 +74,9 @@ func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *ti
 	})
 }
 
-type EditOpts struct{ Total, Merchant, Date, Currency string }
+// EditOpts names the fields to change; Source is recorded on each edit_log
+// row ("" = cli).
+type EditOpts struct{ Total, Merchant, Date, Currency, Source string }
 
 // resolveTxn maps an id prefix of either kind to the active transaction id.
 func resolveTxn(ctx context.Context, st *store.Store, idPrefix string) (string, error) {
@@ -99,7 +98,7 @@ func resolveTxn(ctx context.Context, st *store.Store, idPrefix string) (string, 
 	return row.ID, nil
 }
 
-func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, loc *time.Location) (store.TxnRow, error) {
+func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, now time.Time, loc *time.Location) (store.TxnRow, error) {
 	txnID, err := resolveTxn(ctx, st, idPrefix)
 	if err != nil {
 		return store.TxnRow{}, err
@@ -143,16 +142,19 @@ func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, loc
 		edits = append(edits, store.FieldEdit{Field: "merchant", Old: cur.Merchant, New: o.Merchant})
 	}
 	if o.Date != "" {
-		day, err := time.ParseInLocation("2006-01-02", o.Date, loc)
+		day, err := daytok.Parse(o.Date, now.In(loc))
 		if err != nil {
-			return store.TxnRow{}, fmt.Errorf("fecha inválida %q (usa YYYY-MM-DD)", o.Date)
+			return store.TxnRow{}, err
 		}
 		set["occurred_on"] = day
 		edits = append(edits, store.FieldEdit{Field: "date",
-			Old: cur.OccurredOn.Format("2006-01-02"), New: o.Date})
+			Old: cur.OccurredOn.Format("2006-01-02"), New: day.Format("2006-01-02")})
 	}
 	if len(set) == 0 {
 		return store.TxnRow{}, fmt.Errorf("nada que editar: pasa --total, --merchant, --date o --currency")
+	}
+	for i := range edits {
+		edits[i].Source = o.Source
 	}
 	if err := st.EditTransaction(ctx, txnID, set, edits); err != nil {
 		return store.TxnRow{}, err
