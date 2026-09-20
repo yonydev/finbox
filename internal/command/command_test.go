@@ -165,3 +165,11 @@ func TestListClampAndMonth(t *testing.T) {
 		t.Fatalf("month: %v %d %v", totals, count, err)
 	}
 }
+
+func TestEditScrubsMerchant(t *testing.T) {
+	s, _, txnID := seed(t)
+	row, err := Edit(context.Background(), s, txnID[:8], EditOpts{Merchant: "Pago 4111 1111 1111 1111"}, time.Now(), time.UTC)
+	if err != nil || row.Merchant != "Pago [redactado]" {
+		t.Fatalf("merchant = %q err = %v", row.Merchant, err)
+	}
+}
