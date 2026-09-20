@@ -183,11 +183,7 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 	short := shortID(res.ReceiptID)
 	switch res.Outcome {
 	case pipeline.OutcomeAwaitingConfirm:
-		kb := &InlineKeyboard{{
-			{Text: messages.BtnConfirm, CallbackData: "c|" + res.ReceiptID},
-			{Text: messages.BtnDiscard, CallbackData: "d|" + res.ReceiptID},
-		}}
-		b.edit(ctx, chat, msgID, PendingCard(short, res.Validated, res.Edited), kb)
+		b.edit(ctx, chat, msgID, PendingCard(short, res.Validated, res.Edited), confirmKB(res.ReceiptID))
 	case pipeline.OutcomeFailed:
 		kb := &InlineKeyboard{{
 			{Text: messages.BtnRetry, CallbackData: "r|" + res.ReceiptID},
@@ -197,6 +193,13 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 	case pipeline.OutcomeRejected:
 		b.edit(ctx, chat, msgID, html.EscapeString(res.FailReason), nil)
 	}
+}
+
+func confirmKB(receiptID string) *InlineKeyboard {
+	return &InlineKeyboard{{
+		{Text: messages.BtnConfirm, CallbackData: "c|" + receiptID},
+		{Text: messages.BtnDiscard, CallbackData: "d|" + receiptID},
+	}}
 }
 
 // handleCallback returns true when the caller must CompleteUpdate separately
@@ -231,22 +234,40 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 			b.edit(ctx, chat, msgID, FailedCard(short, "extracción corrupta, usa reintentar"), nil)
 			return true
 		}
+		edits := pipeline.EditsFromRaw(rec.ExtractionRaw, v, "reply")
 		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
 			OccurredOn: v.OccurredOn, Merchant: v.Merchant, AmountMinor: v.AmountMinor,
-			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v),
-		}, updateID, nil)
+			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v), Edits: edits,
+		}, updateID, &rec.UpdatedAt)
 		if err != nil {
 			b.d.Log.Error("confirm failed", "err", err)
 			return true
 		}
-		if !ok {
-			b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
-			if err := b.d.Store.CompleteUpdate(ctx, updateID); err != nil {
-				b.d.Log.Error("complete update failed", "err", err)
+		if !ok { // the guard fired or the receipt moved on — say which
+			rec2, err := b.d.Store.GetReceipt(ctx, rec.ID)
+			if err != nil {
+				b.edit(ctx, chat, msgID, messages.ReceiptNotFound, nil)
+				return true
 			}
-			return false
+			switch rec2.Status {
+			case "awaiting_confirm": // a reply landed between the tap and the write
+				// awaiting_confirm is only ever reached through a successful
+				// validate.Run, so the re-run cannot fail here
+				v2, _ := b.validatedFromStored(rec2)
+				b.edit(ctx, chat, msgID, PendingCard(short, v2, rec2.ExtractionRaw != nil), confirmKB(rec.ID))
+			case "confirmed":
+				b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
+			case "failed":
+				b.edit(ctx, chat, msgID, FailedCard(short, rec2.FailReason), &InlineKeyboard{{
+					{Text: messages.BtnRetry, CallbackData: "r|" + rec.ID},
+					{Text: messages.BtnDiscard, CallbackData: "d|" + rec.ID},
+				}})
+			default: // discarded, or back to pending
+				b.edit(ctx, chat, msgID, messages.ReceiptInactive, nil)
+			}
+			return true
 		}
-		b.edit(ctx, chat, msgID, SavedCard(short, v, false), nil)
+		b.edit(ctx, chat, msgID, SavedCard(short, v, len(edits) > 0), nil)
 		return false // completion stamped inside ConfirmReceipt's tx
 	case "d":
 		ok, err := b.d.Store.DiscardReceipt(ctx, rec.ID, updateID)
