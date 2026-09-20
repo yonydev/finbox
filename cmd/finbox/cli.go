@@ -172,7 +172,7 @@ func cmdAdd(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("add", flag.ContinueOnError)
 	total := fsx.String("total", "", "total, ej. 285.00 (negativo = reembolso)")
 	merchant := fsx.String("merchant", "", "comercio")
-	date := fsx.String("date", "", "fecha YYYY-MM-DD (default hoy)")
+	date := fsx.String("date", "", "fecha YYYY-MM-DD, DD/MM o ayer (default hoy)")
 	currency := fsx.String("currency", "", "moneda ISO 4217, ej. MXN (default MXN)")
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	const usage = "uso: finbox add --total N --merchant S [--date D] [--currency C] [--json]"
@@ -206,7 +206,7 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("edit", flag.ContinueOnError)
 	total := fsx.String("total", "", "nuevo total, ej. 285.00")
 	merchant := fsx.String("merchant", "", "nuevo comercio")
-	date := fsx.String("date", "", "nueva fecha YYYY-MM-DD")
+	date := fsx.String("date", "", "nueva fecha YYYY-MM-DD, DD/MM o ayer")
 	currency := fsx.String("currency", "", "nueva moneda ISO 4217, ej. MXN")
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	const usage = "uso: finbox edit <id> [--total N] [--merchant S] [--date D] [--currency C] [--json]"
@@ -221,7 +221,7 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
 		row, err := command.Edit(e.ctx, e.st, id,
-			command.EditOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency}, e.cfg.Loc)
+			command.EditOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency}, time.Now(), e.cfg.Loc)
 		if err != nil {
 			return mapErr(stderr, *asJSON, err)
 		}

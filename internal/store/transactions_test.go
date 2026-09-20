@@ -18,7 +18,7 @@ func confirmed(t *testing.T, s *Store, sha string, msg int64, amount int64, day 
 	txnID, ok, err := s.ConfirmReceipt(ctx, r.ID, NewTransaction{
 		OccurredOn: day, Merchant: "Walmart", AmountMinor: amount, Currency: "MXN", Source: "receipt",
 		Items: []NewItem{{Position: 1, Name: "Café", QuantityMilli: &q, AmountMinor: &amount}},
-	}, 900+msg)
+	}, 900+msg, nil)
 	if err != nil || !ok {
 		t.Fatalf("confirm: %v %v", ok, err)
 	}
@@ -32,7 +32,7 @@ func TestConfirmIsIdempotent(t *testing.T) {
 	rID, _ := confirmed(t, s, "sha-c1", 300, 36400, day)
 	_, ok, err := s.ConfirmReceipt(ctx, rID, NewTransaction{
 		OccurredOn: day, Merchant: "X", AmountMinor: 1, Currency: "MXN", Source: "receipt",
-	}, 999)
+	}, 999, nil)
 	if err != nil || ok {
 		t.Fatalf("double confirm must be no-op: %v %v", ok, err)
 	}
@@ -64,7 +64,7 @@ func TestVoidAllowsReconfirm(t *testing.T) {
 	}
 	if _, ok, err := s.ConfirmReceipt(ctx, rID, NewTransaction{
 		OccurredOn: day, Merchant: "W", AmountMinor: 5100, Currency: "MXN", Source: "receipt",
-	}, 998); err != nil || !ok {
+	}, 998, nil); err != nil || !ok {
 		t.Fatalf("reconfirm after void: %v %v", ok, err)
 	}
 }
@@ -78,7 +78,7 @@ func TestMonthTotalsPerCurrency(t *testing.T) {
 	// a USD row proves currencies are NOT summed into one bucket
 	r, _ := s.CreateReceipt(ctx, CreateReceiptParams{BlobKey: "kusd", BlobSHA256: "sha-m3", TgMessageID: 322, TgChatID: 7})
 	s.Transition(ctx, r.ID, "pending", "awaiting_confirm", "")
-	s.ConfirmReceipt(ctx, r.ID, NewTransaction{OccurredOn: aug, Merchant: "Hotel", AmountMinor: 4550, Currency: "USD", Source: "receipt"}, 0)
+	s.ConfirmReceipt(ctx, r.ID, NewTransaction{OccurredOn: aug, Merchant: "Hotel", AmountMinor: 4550, Currency: "USD", Source: "receipt"}, 0, nil)
 
 	totals, count, err := s.MonthTotals(ctx, 2026, time.August, time.UTC)
 	if err != nil || count != 3 {

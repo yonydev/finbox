@@ -234,7 +234,7 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
 			OccurredOn: v.OccurredOn, Merchant: v.Merchant, AmountMinor: v.AmountMinor,
 			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v),
-		}, updateID)
+		}, updateID, nil)
 		if err != nil {
 			b.d.Log.Error("confirm failed", "err", err)
 			return true

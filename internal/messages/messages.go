@@ -16,6 +16,9 @@ const (
 	SomethingWrong      = "algo salió mal, revisa los logs"
 	DownloadFailed      = "no pude descargar la foto, reintenta"
 	ReceiptNotFound     = "recibo no encontrado"
+	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
+	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
+	TotalMustBePositive = "el total del ticket debe ser positivo"
 	NoExpenses          = "sin gastos todavía"
 	NothingPending      = "nada pendiente ✨"
 	HelpText            = `🧾 <b>finbox</b>
