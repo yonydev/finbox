@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"finbox/internal/messages"
 	"finbox/internal/store"
 	"finbox/internal/validate"
 )
@@ -20,7 +21,7 @@ func sampleValidated() validate.Validated {
 }
 
 func TestCardEscapesAndShowsWarnings(t *testing.T) {
-	c := Card("a3f2c9d1", sampleValidated())
+	c := Card("a3f2c9d1", sampleValidated(), false)
 	for _, want := range []string{"a3f2c9d1", "Tacos &lt;El Güero&gt;", "$364.00 MXN", "⚠️ fecha futura", "Café"} {
 		if !strings.Contains(c, want) {
 			t.Errorf("card missing %q:\n%s", want, c)
@@ -28,6 +29,22 @@ func TestCardEscapesAndShowsWarnings(t *testing.T) {
 	}
 	if strings.Contains(c, "<El") {
 		t.Error("unescaped HTML in card")
+	}
+	if strings.Contains(c, "✏️") {
+		t.Error("unedited card got a marker")
+	}
+}
+
+func TestPendingCardHintsAndMarksEdits(t *testing.T) {
+	c := PendingCard("a3f2c9d1", sampleValidated(), true)
+	if !strings.Contains(c, messages.ReplyHint) {
+		t.Errorf("pending card missing reply hint:\n%s", c)
+	}
+	if !strings.Contains(c, "</b> ✏️\n") {
+		t.Errorf("edited card missing marker on the header line:\n%s", c)
+	}
+	if strings.Contains(SavedCard("a3f2c9d1", sampleValidated(), true), messages.ReplyHint) {
+		t.Error("saved card must not invite more corrections")
 	}
 }
 
@@ -37,7 +54,7 @@ func TestCardTruncatesItems(t *testing.T) {
 	for i := 0; i < 25; i++ {
 		v.Items = append(v.Items, validate.Item{Position: i + 1, Name: "Item"})
 	}
-	c := Card("a3f2c9d1", v)
+	c := Card("a3f2c9d1", v, false)
 	if !strings.Contains(c, "… y 15 más") {
 		t.Errorf("card missing truncation note:\n%s", c)
 	}

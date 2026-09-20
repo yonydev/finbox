@@ -19,9 +19,14 @@ const (
 	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
 	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
 	TotalMustBePositive = "el total del ticket debe ser positivo"
-	NoExpenses          = "sin gastos todavía"
-	NothingPending      = "nada pendiente ✨"
-	HelpText            = `🧾 <b>finbox</b>
+	ReplyHint           = "💡 ¿algo mal? respóndeme con el dato correcto (ej. <code>15/09</code>)"
+	// CorrectionHelp carries its own HTML — send it raw, never escaped.
+	CorrectionHelp = `no te entendí 🤔
+<code>15/09</code> (o <code>ayer</code>) → fecha · <code>285.00</code> → total · <code>comercio Farmacia 24</code> → comercio
+y varios de un jalón: <code>total 285 fecha 15/09</code>`
+	NoExpenses     = "sin gastos todavía"
+	NothingPending = "nada pendiente ✨"
+	HelpText       = `🧾 <b>finbox</b>
 <i>convierte tickets en gastos</i>
 
 Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con un tap.

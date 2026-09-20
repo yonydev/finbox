@@ -187,7 +187,7 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 			{Text: messages.BtnConfirm, CallbackData: "c|" + res.ReceiptID},
 			{Text: messages.BtnDiscard, CallbackData: "d|" + res.ReceiptID},
 		}}
-		b.edit(ctx, chat, msgID, Card(short, res.Validated), kb)
+		b.edit(ctx, chat, msgID, PendingCard(short, res.Validated, res.Edited), kb)
 	case pipeline.OutcomeFailed:
 		kb := &InlineKeyboard{{
 			{Text: messages.BtnRetry, CallbackData: "r|" + res.ReceiptID},
@@ -246,7 +246,7 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 			}
 			return false
 		}
-		b.edit(ctx, chat, msgID, SavedCard(short, v), nil)
+		b.edit(ctx, chat, msgID, SavedCard(short, v, false), nil)
 		return false // completion stamped inside ConfirmReceipt's tx
 	case "d":
 		ok, err := b.d.Store.DiscardReceipt(ctx, rec.ID, updateID)

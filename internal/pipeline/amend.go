@@ -94,7 +94,7 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 			return Result{}, err
 		}
 	}
-	res.Outcome, res.FailReason, res.Validated = OutcomeAwaitingConfirm, "", v
+	res.Outcome, res.FailReason, res.Validated, res.Edited = OutcomeAwaitingConfirm, "", v, true
 	return res, nil
 }
 
