@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,6 +94,41 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 			return Result{}, err
 		}
 	}
-	res.Outcome, res.FailReason, res.Validated = OutcomeAwaitingConfirm, "", v
+	res.Outcome, res.FailReason, res.Validated, res.Edited = OutcomeAwaitingConfirm, "", v, true
 	return res, nil
+}
+
+// EditsFromRaw diffs the model's original extraction against what confirm is
+// about to save, so the edit_log records exactly what the human corrected.
+// A field absent or empty in raw is skipped: with no original value there is
+// nothing to diff, only a phantom row.
+func EditsFromRaw(raw []byte, v validate.Validated, source string) []store.FieldEdit {
+	if len(raw) == 0 {
+		return nil // never amended
+	}
+	var ex extract.Extraction
+	if err := json.Unmarshal(raw, &ex); err != nil {
+		return nil
+	}
+	var edits []store.FieldEdit
+	add := func(field, old, final string) {
+		if old == "" || old == final {
+			return
+		}
+		edits = append(edits, store.FieldEdit{Field: field, Old: old, New: final, Source: source})
+	}
+	// the raw total reads against the raw currency: "285.50" is 28550 MXN
+	// centavos but an invalid JPY amount
+	rawCur := strings.ToUpper(strings.TrimSpace(ex.Currency))
+	if money.Known(rawCur) {
+		add("currency", rawCur, v.Currency)
+	} else {
+		rawCur = v.Currency // validate's fallback, not a human correction
+	}
+	if minor, err := money.ParseMinor(ex.Total, rawCur); err == nil {
+		add("total", strconv.FormatInt(minor, 10), strconv.FormatInt(v.AmountMinor, 10))
+	}
+	add("merchant", validate.CapRunes(strings.TrimSpace(validate.Scrub(ex.Merchant)), 120), v.Merchant)
+	add("date", ex.Date, v.OccurredOn.Format("2006-01-02"))
+	return edits
 }

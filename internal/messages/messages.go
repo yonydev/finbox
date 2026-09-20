@@ -12,16 +12,20 @@ const (
 	AlreadyProcessed    = "ya procesé este ticket ✅"
 	AwaitingYourConfirm = "este ticket está esperando tu confirmación"
 	NotACommand         = "mándame una foto de un ticket 🧾 (o usa /help)"
-	EditComingSoon      = "la edición desde el chat llega pronto; usa <code>finbox edit %s</code>"
 	SomethingWrong      = "algo salió mal, revisa los logs"
 	DownloadFailed      = "no pude descargar la foto, reintenta"
 	ReceiptNotFound     = "recibo no encontrado"
 	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
 	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
 	TotalMustBePositive = "el total del ticket debe ser positivo"
-	NoExpenses          = "sin gastos todavía"
-	NothingPending      = "nada pendiente ✨"
-	HelpText            = `🧾 <b>finbox</b>
+	ReplyHint           = "💡 ¿algo mal? respóndeme con el dato correcto (ej. <code>15/09</code>)"
+	// CorrectionHelp carries its own HTML — send it raw, never escaped.
+	CorrectionHelp = `no te entendí 🤔
+<code>15/09</code> (o <code>ayer</code>) → fecha · <code>285.00</code> → total · <code>comercio Farmacia 24</code> → comercio
+y varios de un jalón: <code>total 285 fecha 15/09</code>`
+	NoExpenses     = "sin gastos todavía"
+	NothingPending = "nada pendiente ✨"
+	HelpText       = `🧾 <b>finbox</b>
 <i>convierte tickets en gastos</i>
 
 Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con un tap.
@@ -40,6 +44,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 <b>Tips</b>
 ─────────────
 📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
+✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total o comercio)
 📸 JPEG, PNG o WebP · máx. 20 MB
 🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"

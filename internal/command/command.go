@@ -12,6 +12,7 @@ import (
 	"finbox/internal/monthtok"
 	"finbox/internal/pipeline"
 	"finbox/internal/store"
+	"finbox/internal/validate"
 )
 
 func List(ctx context.Context, st *store.Store, limit int, monthTok string, now time.Time, loc *time.Location) ([]store.TxnRow, error) {
@@ -69,7 +70,7 @@ func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *ti
 		return store.TxnRow{}, err
 	}
 	return st.AddTransaction(ctx, store.NewTransaction{
-		OccurredOn: day, Merchant: strings.TrimSpace(o.Merchant),
+		OccurredOn: day, Merchant: validate.Scrub(strings.TrimSpace(o.Merchant)),
 		AmountMinor: minor, Currency: currency, Source: "manual",
 	})
 }
@@ -138,8 +139,9 @@ func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, now
 			Old: strconv.FormatInt(cur.AmountMinor, 10), New: strconv.FormatInt(minor, 10)})
 	}
 	if o.Merchant != "" {
-		set["merchant"] = o.Merchant
-		edits = append(edits, store.FieldEdit{Field: "merchant", Old: cur.Merchant, New: o.Merchant})
+		m := validate.Scrub(strings.TrimSpace(o.Merchant))
+		set["merchant"] = m
+		edits = append(edits, store.FieldEdit{Field: "merchant", Old: cur.Merchant, New: m})
 	}
 	if o.Date != "" {
 		day, err := daytok.Parse(o.Date, now.In(loc))

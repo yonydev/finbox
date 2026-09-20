@@ -15,9 +15,13 @@ import (
 const Budget = 3500
 const maxItemsShown = 10
 
-func Card(shortID string, v validate.Validated) string {
+func Card(shortID string, v validate.Validated, edited bool) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🧾 <code>%s</code> · <b>%s</b>\n", html.EscapeString(shortID), html.EscapeString(v.Merchant))
+	mark := "" // trailing, like ListTable: the emoji's odd width stays out of the layout
+	if edited {
+		mark = " ✏️"
+	}
+	fmt.Fprintf(&b, "🧾 <code>%s</code> · <b>%s</b>%s\n", html.EscapeString(shortID), html.EscapeString(v.Merchant), mark)
 	fmt.Fprintf(&b, "📅 %s · 💰 %s %s\n", v.OccurredOn.Format("2006-01-02"),
 		money.Format(v.AmountMinor, v.Currency), html.EscapeString(v.Currency))
 	if len(v.Items) > 0 {
@@ -40,8 +44,14 @@ func Card(shortID string, v validate.Validated) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func SavedCard(shortID string, v validate.Validated) string {
-	return Card(shortID, v) + "\n\n" + messages.Saved
+// PendingCard is the confirm-or-correct card; the hint lives here and not in
+// Card, which SavedCard also renders.
+func PendingCard(shortID string, v validate.Validated, edited bool) string {
+	return Card(shortID, v, edited) + "\n\n" + messages.ReplyHint
+}
+
+func SavedCard(shortID string, v validate.Validated, edited bool) string {
+	return Card(shortID, v, edited) + "\n\n" + messages.Saved
 }
 
 func DiscardedCard(shortID string) string {

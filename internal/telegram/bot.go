@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"finbox/internal/command"
+	"finbox/internal/correct"
 	"finbox/internal/extract"
 	"finbox/internal/messages"
 	"finbox/internal/pipeline"
@@ -183,11 +185,7 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 	short := shortID(res.ReceiptID)
 	switch res.Outcome {
 	case pipeline.OutcomeAwaitingConfirm:
-		kb := &InlineKeyboard{{
-			{Text: messages.BtnConfirm, CallbackData: "c|" + res.ReceiptID},
-			{Text: messages.BtnDiscard, CallbackData: "d|" + res.ReceiptID},
-		}}
-		b.edit(ctx, chat, msgID, Card(short, res.Validated), kb)
+		b.edit(ctx, chat, msgID, PendingCard(short, res.Validated, res.Edited), confirmKB(res.ReceiptID))
 	case pipeline.OutcomeFailed:
 		kb := &InlineKeyboard{{
 			{Text: messages.BtnRetry, CallbackData: "r|" + res.ReceiptID},
@@ -197,6 +195,13 @@ func (b *Bot) renderResult(ctx context.Context, chat, msgID int64, res pipeline.
 	case pipeline.OutcomeRejected:
 		b.edit(ctx, chat, msgID, html.EscapeString(res.FailReason), nil)
 	}
+}
+
+func confirmKB(receiptID string) *InlineKeyboard {
+	return &InlineKeyboard{{
+		{Text: messages.BtnConfirm, CallbackData: "c|" + receiptID},
+		{Text: messages.BtnDiscard, CallbackData: "d|" + receiptID},
+	}}
 }
 
 // handleCallback returns true when the caller must CompleteUpdate separately
@@ -231,22 +236,42 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 			b.edit(ctx, chat, msgID, FailedCard(short, "extracción corrupta, usa reintentar"), nil)
 			return true
 		}
+		edits := pipeline.EditsFromRaw(rec.ExtractionRaw, v, "reply")
 		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
 			OccurredOn: v.OccurredOn, Merchant: v.Merchant, AmountMinor: v.AmountMinor,
-			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v),
-		}, updateID, nil)
+			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v), Edits: edits,
+		}, updateID, &rec.UpdatedAt)
 		if err != nil {
 			b.d.Log.Error("confirm failed", "err", err)
 			return true
 		}
-		if !ok {
-			b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
-			if err := b.d.Store.CompleteUpdate(ctx, updateID); err != nil {
-				b.d.Log.Error("complete update failed", "err", err)
+		if !ok { // the guard fired or the receipt moved on — say which
+			rec2, err := b.d.Store.GetReceipt(ctx, rec.ID)
+			if err != nil {
+				b.edit(ctx, chat, msgID, messages.ReceiptNotFound, nil)
+				return true
 			}
-			return false
+			switch rec2.Status {
+			case "awaiting_confirm": // a reply landed between the tap and the write
+				// awaiting_confirm is only ever reached through a successful
+				// validate.Run, so the re-run cannot fail here
+				v2, _ := b.validatedFromStored(rec2)
+				b.renderResult(ctx, chat, msgID, pipeline.Result{
+					ReceiptID: rec.ID, Outcome: pipeline.OutcomeAwaitingConfirm,
+					Validated: v2, Edited: rec2.ExtractionRaw != nil,
+				})
+			case "confirmed":
+				b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
+			case "failed":
+				b.renderResult(ctx, chat, msgID, pipeline.Result{
+					ReceiptID: rec.ID, Outcome: pipeline.OutcomeFailed, FailReason: rec2.FailReason,
+				})
+			default: // discarded, or back to pending
+				b.edit(ctx, chat, msgID, messages.ReceiptInactive, nil)
+			}
+			return true
 		}
-		b.edit(ctx, chat, msgID, SavedCard(short, v), nil)
+		b.edit(ctx, chat, msgID, SavedCard(short, v, len(edits) > 0), nil)
 		return false // completion stamped inside ConfirmReceipt's tx
 	case "d":
 		ok, err := b.d.Store.DiscardReceipt(ctx, rec.ID, updateID)
@@ -283,14 +308,79 @@ func (b *Bot) validatedFromStored(rec store.Receipt) (validate.Validated, error)
 	return validate.Run(ex, time.Now(), b.d.Loc)
 }
 
+// handleReply treats a reply to a receipt card as a correction. Returns false
+// when the replied-to message is not a card, so the text falls through to the
+// normal router.
+func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
+	chat := m.Chat.ID
+	rec, err := b.d.Store.GetReceiptByCard(ctx, chat, m.ReplyTo.MessageID)
+	if err != nil {
+		return false
+	}
+	short := shortID(rec.ID)
+	currency := "" // confirmed: command.Edit re-parses the total against the txn currency
+	if rec.Status != "confirmed" {
+		var ex extract.Extraction
+		if err := json.Unmarshal(rec.Extraction, &ex); err == nil {
+			currency = ex.Currency
+		}
+	}
+	sendErr := func(err error) {
+		b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
+	}
+	now := time.Now()
+	f, err := correct.Parse(m.Text, now.In(b.d.Loc), currency)
+	if err != nil {
+		if errors.Is(err, correct.ErrUnparseable) {
+			b.send(ctx, chat, messages.CorrectionHelp) // carries its own HTML
+		} else {
+			sendErr(err)
+		}
+		return true
+	}
+	if rec.Status == "confirmed" {
+		// short, not rec.ID: the CLI-flavoured errors quote the id back
+		row, err := command.Edit(ctx, b.d.Store, short, command.EditOpts{
+			Total: f.Total, Merchant: f.Merchant, Date: f.Date, Currency: f.Currency, Source: "reply",
+		}, now, b.d.Loc)
+		if err != nil {
+			sendErr(err)
+			return true
+		}
+		// ponytail: the saved card is re-rendered from the receipt's extraction
+		// with the transaction pasted over it — a receipt-less transaction, or an
+		// extraction that no longer validates, loses its items until
+		// store.GetTransactionItems exists
+		v, verr := b.validatedFromStored(rec)
+		if verr != nil {
+			b.d.Log.Warn("re-render sin items", "receipt", rec.ID, "err", verr)
+		}
+		v.Merchant, v.OccurredOn, v.Currency, v.AmountMinor = row.Merchant, row.OccurredOn, row.Currency, row.AmountMinor
+		v.Warnings = nil
+		b.edit(ctx, chat, rec.TgCardMessageID, SavedCard(short, v, true), nil)
+	} else {
+		res, err := pipeline.Amend(ctx, b.d, rec.ID, f, now)
+		if err != nil {
+			b.d.Log.Error("amend failed", "err", err)
+			b.send(ctx, chat, messages.SomethingWrong)
+			return true
+		}
+		if res.Outcome == pipeline.OutcomeRejected {
+			b.send(ctx, chat, html.EscapeString(res.FailReason)) // never over the card
+			return true
+		}
+		b.renderResult(ctx, chat, rec.TgCardMessageID, res)
+	}
+	if err := b.api.DeleteMessage(ctx, chat, m.MessageID); err != nil {
+		b.d.Log.Warn("delete reply failed", "err", err) // the correction already landed
+	}
+	return true
+}
+
 func (b *Bot) handleText(ctx context.Context, m *Message) {
 	chat := m.Chat.ID
-	if m.ReplyTo != nil {
-		short := "<id>"
-		if rec, err := b.d.Store.GetReceiptByCard(ctx, chat, m.ReplyTo.MessageID); err == nil {
-			short = shortID(rec.ID)
-		}
-		b.send(ctx, chat, fmt.Sprintf(messages.EditComingSoon, short))
+	// a command replying to the card stays a command: "/list" is not a date
+	if m.ReplyTo != nil && !strings.HasPrefix(strings.TrimSpace(m.Text), "/") && b.handleReply(ctx, m) {
 		return
 	}
 	fields := strings.Fields(m.Text)

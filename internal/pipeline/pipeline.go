@@ -60,6 +60,7 @@ type Result struct {
 	Validated     validate.Validated
 	FailReason    string
 	DuplicateOfID string
+	Edited        bool // a reply-correction was merged in
 }
 
 func IngestPhoto(ctx context.Context, d Deps, image []byte, tgMessageID, tgChatID int64, now time.Time) (Result, error) {

@@ -72,6 +72,7 @@ type okExtractor struct{}
 func (okExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
 	return extract.Result{Extraction: extract.Extraction{
 		Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00",
+		Items: []extract.Item{{Name: "Café", Amount: "364.00"}},
 	}, Model: "gpt-4o-mini", RawJSON: []byte(`{}`)}, nil
 }
 
@@ -80,6 +81,139 @@ func photoUpdate(updateID, userID int64) Update {
 		MessageID: updateID * 10, From: &User{ID: userID}, Chat: Chat{ID: userID},
 		Photo: []PhotoSize{{FileID: "f1", FileSize: 100}},
 	}}
+}
+
+func replyUpdate(updateID, userID, cardMsgID int64, text string) Update {
+	return Update{UpdateID: updateID, Message: &Message{
+		MessageID: updateID * 10, From: &User{ID: userID}, Chat: Chat{ID: userID}, Text: text,
+		ReplyTo: &Message{MessageID: cardMsgID, Chat: Chat{ID: userID}},
+	}}
+}
+
+// cardOf runs the photo flow and returns the receipt behind the card.
+func cardOf(t *testing.T, b *Bot, st *store.Store, updateID int64) store.Receipt {
+	t.Helper()
+	b.HandleUpdate(context.Background(), photoUpdate(updateID, 111))
+	recs, err := st.PendingReceipts(context.Background())
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("recs = %+v, err = %v", recs, err)
+	}
+	return recs[0]
+}
+
+func callsOf(api *fakeAPI, from int, method string) []call {
+	var out []call
+	for _, c := range api.calls[from:] {
+		if c.method == method {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestReplyCorrectsPendingCard(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 50)
+	b.HandleUpdate(context.Background(), replyUpdate(51, 111, rec.TgCardMessageID, "285.50"))
+
+	last := api.last()
+	if last.method != "delete" || last.msgID != 510 {
+		t.Fatalf("user reply not deleted: %+v", last)
+	}
+	edits := callsOf(api, 0, "edit")
+	card := edits[len(edits)-1]
+	if card.msgID != rec.TgCardMessageID || card.kb == nil {
+		t.Fatalf("card not re-rendered in place: %+v", card)
+	}
+	for _, want := range []string{"$285.50", "✏️", "Café"} {
+		if !strings.Contains(card.text, want) {
+			t.Errorf("card missing %q:\n%s", want, card.text)
+		}
+	}
+	if strings.Contains(card.text, "los items suman") {
+		t.Errorf("human total must silence the items warning:\n%s", card.text)
+	}
+	after, _ := st.GetReceipt(context.Background(), rec.ID)
+	if after.ExtractionRaw == nil {
+		t.Fatal("extraction_raw not captured")
+	}
+}
+
+func TestReplyProseTeachesAndChangesNothing(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 52)
+	n := len(api.calls)
+	b.HandleUpdate(context.Background(), replyUpdate(53, 111, rec.TgCardMessageID, "creo que si esta bien"))
+
+	sends := callsOf(api, n, "send")
+	if len(sends) != 1 || !strings.Contains(sends[0].text, "no te entendí") {
+		t.Fatalf("sends = %+v", sends)
+	}
+	if len(callsOf(api, n, "edit")) != 0 || len(callsOf(api, n, "delete")) != 0 {
+		t.Fatalf("prose reply touched the card: %+v", api.calls[n:])
+	}
+	after, _ := st.GetReceipt(context.Background(), rec.ID)
+	if string(after.Extraction) != string(rec.Extraction) || after.ExtractionRaw != nil {
+		t.Fatalf("extraction changed: %s", after.Extraction)
+	}
+}
+
+func TestConfirmAfterReplyMarksEdited(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 54)
+	b.HandleUpdate(context.Background(), replyUpdate(55, 111, rec.TgCardMessageID, "285.50"))
+	b.HandleUpdate(context.Background(), Update{UpdateID: 56, CallbackQuery: &CallbackQuery{
+		ID: "cbe", From: &User{ID: 111}, Data: "c|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}})
+	rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows) != 1 || !rows[0].Edited || rows[0].AmountMinor != 28550 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	last := api.last()
+	if !strings.Contains(last.text, "Guardado") || !strings.Contains(last.text, "✏️") {
+		t.Fatalf("saved card = %+v", last)
+	}
+}
+
+func TestReplyToConfirmedCardEditsTransaction(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 57)
+	b.HandleUpdate(context.Background(), Update{UpdateID: 58, CallbackQuery: &CallbackQuery{
+		ID: "cbs", From: &User{ID: 111}, Data: "c|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}})
+	b.HandleUpdate(context.Background(), replyUpdate(59, 111, rec.TgCardMessageID, "comercio Soriana"))
+
+	rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows) != 1 || rows[0].Merchant != "Soriana" || !rows[0].Edited {
+		t.Fatalf("rows = %+v", rows)
+	}
+	edits := callsOf(api, 0, "edit")
+	card := edits[len(edits)-1]
+	for _, want := range []string{"Soriana", "Guardado", "✏️", "Café"} {
+		if !strings.Contains(card.text, want) {
+			t.Errorf("re-rendered card missing %q:\n%s", want, card.text)
+		}
+	}
+}
+
+func TestReplyToNonCardFallsThroughToRouter(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 60)
+	n := len(api.calls)
+	b.HandleUpdate(context.Background(), replyUpdate(61, 111, 9999, "15/09")) // not a card
+	if !strings.Contains(api.last().text, "mándame una foto") {
+		t.Fatalf("last = %+v", api.last())
+	}
+	if len(callsOf(api, n, "delete")) != 0 {
+		t.Fatalf("deleted a message that was not a correction: %+v", api.calls[n:])
+	}
+	// a command replying to the card stays a command
+	b.HandleUpdate(context.Background(), replyUpdate(62, 111, rec.TgCardMessageID, "/list"))
+	if !strings.Contains(api.last().text, "sin gastos") {
+		t.Fatalf("/list in a reply did not run as a command: %+v", api.last())
+	}
 }
 
 func TestStrangerIsIgnored(t *testing.T) {
