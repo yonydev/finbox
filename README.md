@@ -126,7 +126,9 @@ FINBOX_DEPLOY_HOST=me@my-server ./deploy.sh
 
 The target needs: Docker with the compose plugin, a clone of this repo at `~/finbox` (override with `FINBOX_DEPLOY_DIR`), a filled `.env` (use the **production** bot token there, and set a real `POSTGRES_PASSWORD`), and a sentinel file marking your data disk so the script refuses to run against an unmounted volume: `touch /your/data/disk/.finbox-ssd` and set `FINBOX_DATA_SENTINEL` to that path (or `FINBOX_DATA_SENTINEL=skip` if the guard doesn't apply to your setup).
 
-The script builds the image on the target, brings up Postgres, runs migrations, restarts the app, and verifies the new version responds.
+The script builds the image on the target, brings up Postgres, runs migrations, restarts the app, and verifies the new version responds. The final smoke is real, not a `sleep`: the deploy fails if the bot doesn't reach Telegram long-polling within 45s, or if `finbox list --json` doesn't run against the migrated database.
+
+Backups are out of `deploy.sh`'s scope beyond the pre-migration dump it writes. `scripts/backup-offsite.sh` is the optional nightly job that dumps Postgres and copies both the dumps and the receipt blobs off-site to Cloudflare R2, encrypted with an rclone `crypt` remote; setup lives in the Pi deploy runbook (`docs/deploy-pi.md`, §5 and §7).
 
 ## Testing
 
