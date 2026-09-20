@@ -20,11 +20,12 @@ LOG=$PWD/backup-offsite.log
 notify() { curl -sS -m 20 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="${TELEGRAM_ALLOWED_USER_IDS%%,*}" --data-urlencode text="$1" >/dev/null || true; }
 trap 'notify "⚠️ finbox backup-offsite falló (línea $LINENO). Revisa $LOG en la Pi."' ERR
 
+mkdir -p backups
 dump="backups/finbox-$(date +%F).dump"
 # Two statements, NOT `a && b`: under set -e a failure left of && neither aborts nor fires the ERR trap.
 docker compose exec -T postgres pg_dump -Fc -U finbox finbox > "$dump.tmp"
 mv "$dump.tmp" "$dump"   # tmp+mv: a partial dump is never uploaded
-find backups -name 'finbox-*.dump' -mtime +30 -delete
+find backups -name 'finbox-*.dump*' -mtime +30 -delete
 # copy, never sync: a local delete must not propagate to the only off-site copy.
 # No --log-level INFO: it grows unrotated; NOTICE (the default) already logs errors.
 rclone copy backups  r2crypt:backups  --exclude '*.tmp' --log-file "$LOG"
