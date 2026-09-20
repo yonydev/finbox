@@ -12,7 +12,6 @@ const (
 	AlreadyProcessed    = "ya procesé este ticket ✅"
 	AwaitingYourConfirm = "este ticket está esperando tu confirmación"
 	NotACommand         = "mándame una foto de un ticket 🧾 (o usa /help)"
-	EditComingSoon      = "la edición desde el chat llega pronto; usa <code>finbox edit %s</code>"
 	SomethingWrong      = "algo salió mal, revisa los logs"
 	DownloadFailed      = "no pude descargar la foto, reintenta"
 	ReceiptNotFound     = "recibo no encontrado"
@@ -45,6 +44,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 <b>Tips</b>
 ─────────────
 📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
+✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total o comercio)
 📸 JPEG, PNG o WebP · máx. 20 MB
 🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
