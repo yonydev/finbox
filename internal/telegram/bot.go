@@ -256,14 +256,16 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 				// awaiting_confirm is only ever reached through a successful
 				// validate.Run, so the re-run cannot fail here
 				v2, _ := b.validatedFromStored(rec2)
-				b.edit(ctx, chat, msgID, PendingCard(short, v2, rec2.ExtractionRaw != nil), confirmKB(rec.ID))
+				b.renderResult(ctx, chat, msgID, pipeline.Result{
+					ReceiptID: rec.ID, Outcome: pipeline.OutcomeAwaitingConfirm,
+					Validated: v2, Edited: rec2.ExtractionRaw != nil,
+				})
 			case "confirmed":
 				b.edit(ctx, chat, msgID, fmt.Sprintf("<code>%s</code> · %s", short, messages.AlreadySaved), nil)
 			case "failed":
-				b.edit(ctx, chat, msgID, FailedCard(short, rec2.FailReason), &InlineKeyboard{{
-					{Text: messages.BtnRetry, CallbackData: "r|" + rec.ID},
-					{Text: messages.BtnDiscard, CallbackData: "d|" + rec.ID},
-				}})
+				b.renderResult(ctx, chat, msgID, pipeline.Result{
+					ReceiptID: rec.ID, Outcome: pipeline.OutcomeFailed, FailReason: rec2.FailReason,
+				})
 			default: // discarded, or back to pending
 				b.edit(ctx, chat, msgID, messages.ReceiptInactive, nil)
 			}
@@ -323,13 +325,16 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 			currency = ex.Currency
 		}
 	}
+	sendErr := func(err error) {
+		b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
+	}
 	now := time.Now()
 	f, err := correct.Parse(m.Text, now.In(b.d.Loc), currency)
 	if err != nil {
 		if errors.Is(err, correct.ErrUnparseable) {
 			b.send(ctx, chat, messages.CorrectionHelp) // carries its own HTML
 		} else {
-			b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
+			sendErr(err)
 		}
 		return true
 	}
@@ -339,7 +344,7 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 			Total: f.Total, Merchant: f.Merchant, Date: f.Date, Currency: f.Currency, Source: "reply",
 		}, now, b.d.Loc)
 		if err != nil {
-			b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
+			sendErr(err)
 			return true
 		}
 		// ponytail: the saved card is re-rendered from the receipt's extraction
