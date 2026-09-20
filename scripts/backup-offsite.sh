@@ -2,16 +2,16 @@
 # Nightly off-site backup: pg_dump → local rotation → copy to R2 (rclone crypt).
 #
 # Root crontab on the Pi: 0 3 * * * /opt/finbox/scripts/backup-offsite.sh
-# It REPLACES the pg_dump line in yonatanpi's crontab (docs/deploy-pi.md §5) —
+# It REPLACES the nightly pg_dump line in the deploy user's crontab —
 # keep both and you get two dumps a night.
 #
 # Runs as root: receipt blobs are written 0600 under uid 10001 (internal/blob/fs/fs.go),
-# so yonatanpi cannot read them; rclone.conf lives in /root/.config/rclone/rclone.conf (600).
+# so the deploy user cannot read them; rclone.conf lives in /root/.config/rclone/rclone.conf (600).
 #
 # .env must stay KEY=value with no spaces or quotes — it is sourced, and a value with
 # spaces dies before the ERR trap is armed, so the failure would be silent.
 #
-# On failure: Telegram message via the bot token. Setup: docs/deploy-pi.md §7.
+# On failure: Telegram message via the bot token from .env.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
