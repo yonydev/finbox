@@ -26,4 +26,7 @@ func TestUnmarshalAcceptsNumbersAndStrings(t *testing.T) {
 	if string(out) != `{"name":"Leche","quantity":"2","amount":"45.50"}` {
 		t.Fatalf("marshal %s", out)
 	}
+	if err := json.Unmarshal([]byte(`{"total":"285.00"}`), &ex); err != nil || ex.Total != "285.00" {
+		t.Fatalf("string total must pass through unchanged: %v %q", err, ex.Total)
+	}
 }
