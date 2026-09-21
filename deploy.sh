@@ -36,6 +36,7 @@ until docker compose logs --since "\$started" finbox 2>&1 | grep 'finbox serve: 
   sleep 1
 done
 docker compose exec -T finbox finbox list --json >/dev/null </dev/null
+echo "smoke ok: polling en \${n}s, list --json responde"
 docker compose exec -T finbox finbox version </dev/null
 EOF
 echo "deploy ok"
