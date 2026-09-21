@@ -1,6 +1,9 @@
 package extract
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+)
 
 // ErrNonRetryable marks extraction failures where retrying cannot help
 // (bad API key, exhausted quota, bad request). Implementations wrap it;
@@ -27,4 +30,54 @@ type Result struct {
 	RawJSON          []byte // the post-parse, pre-scrub document (scrubbed before persisting)
 	PromptTokens     int
 	CompletionTokens int
+}
+
+// numStr accepts both "12.50" and 12.5: the models return decimals as JSON
+// numbers now and then, and a strict string field turned that into a dead-end
+// ("no pude leer el ticket" after 3 retries). Kept as string on the struct so
+// nothing downstream changes.
+type numStr string
+
+func (n *numStr) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*n = numStr(s)
+		return nil
+	}
+	var num json.Number // also swallows null (left empty)
+	if err := json.Unmarshal(b, &num); err != nil {
+		return err
+	}
+	*n = numStr(num)
+	return nil
+}
+
+func (it *Item) UnmarshalJSON(b []byte) error {
+	var w struct {
+		Name     string `json:"name"`
+		Quantity numStr `json:"quantity"`
+		Amount   numStr `json:"amount"`
+	}
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*it = Item{Name: w.Name, Quantity: string(w.Quantity), Amount: string(w.Amount)}
+	return nil
+}
+
+func (e *Extraction) UnmarshalJSON(b []byte) error {
+	type plain Extraction // no methods: avoids recursing into this UnmarshalJSON
+	var w struct {
+		plain
+		Total numStr `json:"total"` // shallower than plain.Total, so it wins the tag
+	}
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*e = Extraction(w.plain)
+	e.Total = string(w.Total)
+	return nil
 }
