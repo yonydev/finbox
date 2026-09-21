@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func fakeCompletion(t *testing.T, status int, body string) *httptest.Server {
@@ -14,6 +17,9 @@ func fakeCompletion(t *testing.T, status int, body string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {
 			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if req, _ := io.ReadAll(r.Body); !strings.Contains(string(req), "Hoy es 2026-08-28.") {
+			t.Errorf("request lacks the reference date: %.300s", req)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -32,7 +38,7 @@ func TestExtractOK(t *testing.T) {
 	defer srv.Close()
 	ex := New("sk-test", "gpt-4o-mini")
 	ex.baseURL = srv.URL + "/" // trailing slash: the client path-joins onto the base
-	res, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg")
+	res, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +59,7 @@ func TestExtractNonRetryable(t *testing.T) {
 	defer srv.Close()
 	ex := New("sk-bad", "gpt-4o-mini")
 	ex.baseURL = srv.URL + "/"
-	_, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg")
+	_, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	if !errors.Is(err, ErrNonRetryable) {
 		t.Fatalf("err = %v, want ErrNonRetryable", err)
 	}

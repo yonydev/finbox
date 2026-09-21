@@ -69,7 +69,7 @@ func (b *memBlob) Get(_ context.Context, k string) ([]byte, error) { return b.m[
 
 type okExtractor struct{}
 
-func (okExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
+func (okExtractor) Extract(context.Context, []byte, string, time.Time) (extract.Result, error) {
 	return extract.Result{Extraction: extract.Extraction{
 		Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00",
 		Items: []extract.Item{{Name: "Café", Amount: "364.00"}},
@@ -322,7 +322,7 @@ func TestCloseCallbackFallsBackToEditWhenDeleteFails(t *testing.T) {
 
 type errExtractor struct{}
 
-func (errExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
+func (errExtractor) Extract(context.Context, []byte, string, time.Time) (extract.Result, error) {
 	return extract.Result{}, fmt.Errorf("%w: ilegible", extract.ErrNonRetryable)
 }
 

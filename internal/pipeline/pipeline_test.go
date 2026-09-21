@@ -30,7 +30,7 @@ type fakeExtractor struct {
 	calls int
 }
 
-func (f *fakeExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
+func (f *fakeExtractor) Extract(context.Context, []byte, string, time.Time) (extract.Result, error) {
 	f.calls++
 	return f.res, f.err
 }
@@ -165,7 +165,7 @@ func TestReprocessConfirmedWithActiveTxnRejected(t *testing.T) {
 
 type panicExtractor struct{}
 
-func (panicExtractor) Extract(context.Context, []byte, string) (extract.Result, error) {
+func (panicExtractor) Extract(context.Context, []byte, string, time.Time) (extract.Result, error) {
 	panic("boom")
 }
 

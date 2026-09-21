@@ -44,7 +44,9 @@ func (e *Extractor) client() oa.Client {
 	return oa.NewClient(opts...)
 }
 
-func (e *Extractor) Extract(ctx context.Context, image []byte, mime string) (extract.Result, error) {
+// today is the reference date the prompt's date rules lean on (upload day in
+// prod, blob mtime in the corpus): it disambiguates DD/MM vs MM/DD and 2-digit years.
+func (e *Extractor) Extract(ctx context.Context, image []byte, mime string, today time.Time) (extract.Result, error) {
 	// The bot's poll loop is sequential with no deadline of its own; without
 	// this bound one slow request blocks confirmations and commands.
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -57,7 +59,7 @@ func (e *Extractor) Extract(ctx context.Context, image []byte, mime string) (ext
 			oa.SystemMessage(systemPrompt),
 			oa.UserMessage([]oa.ChatCompletionContentPartUnionParam{
 				oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{URL: dataURL}),
-				oa.TextContentPart("Extrae este ticket."),
+				oa.TextContentPart("Hoy es " + today.Format("2006-01-02") + ". Extrae este ticket."),
 			}),
 		},
 		ResponseFormat: oa.ChatCompletionNewParamsResponseFormatUnion{

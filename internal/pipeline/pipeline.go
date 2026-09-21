@@ -21,7 +21,7 @@ import (
 const MaxImageBytes = 20 << 20
 
 type Extractor interface {
-	Extract(ctx context.Context, image []byte, mime string) (extract.Result, error)
+	Extract(ctx context.Context, image []byte, mime string, today time.Time) (extract.Result, error)
 }
 
 type BlobStore interface {
@@ -118,7 +118,9 @@ func Reprocess(ctx context.Context, d Deps, receiptID string, now time.Time) (Re
 	if !ok {
 		return Result{ReceiptID: rec.ID, Outcome: OutcomeFailed, FailReason: "blob corrupto"}, nil
 	}
-	return runExtraction(ctx, d, rec, image, ty.MIME(), rec.Status, now)
+	// Anchor on the upload day, not on now: a reprocess months later must not
+	// tell the model "today" is a date the receipt could never have.
+	return runExtraction(ctx, d, rec, image, ty.MIME(), rec.Status, rec.CreatedAt)
 }
 
 func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte, mime, fromStatus string, now time.Time) (res Result, err error) {
@@ -134,7 +136,7 @@ func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte,
 		}
 	}()
 	res = Result{ReceiptID: rec.ID}
-	exRes, err := extractWithRetry(ctx, d, image, mime)
+	exRes, err := extractWithRetry(ctx, d, image, mime, now.In(d.Loc))
 	if err != nil {
 		reason := failReason(err)
 		ok, terr := d.Store.Transition(ctx, rec.ID, fromStatus, "failed", reason)
@@ -183,7 +185,7 @@ func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte,
 	return res, nil
 }
 
-func extractWithRetry(ctx context.Context, d Deps, image []byte, mime string) (extract.Result, error) {
+func extractWithRetry(ctx context.Context, d Deps, image []byte, mime string, today time.Time) (extract.Result, error) {
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -193,7 +195,7 @@ func extractWithRetry(ctx context.Context, d Deps, image []byte, mime string) (e
 			case <-time.After(d.backoff(attempt)):
 			}
 		}
-		res, err := d.Extractor.Extract(ctx, image, mime)
+		res, err := d.Extractor.Extract(ctx, image, mime, today)
 		if err == nil {
 			return res, nil
 		}
