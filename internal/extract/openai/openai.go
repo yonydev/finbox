@@ -24,7 +24,16 @@ total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 - amount de cada item es el TOTAL DE LA LÍNEA como string decimal; omítelo si el precio no es legible.
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
-- No inventes valores: campo ilegible = "" u omitido.`
+- No inventes valores: campo ilegible = "" u omitido.
+Fecha (el mensaje del usuario dice la fecha de hoy):
+- Es la fecha de la compra o del pago; no vencimiento, entrega ni vigencia.
+- Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy.
+- Año de dos dígitos AA = 20AA (26 → 2026). Sin año impreso: el de hoy, o el anterior si quedaría en el futuro.
+- Entre varias lecturas válidas elige la más cercana a hoy y nunca posterior a hoy.
+Total:
+- total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
+- Si hay PROPINA y un Total que la incluye, total es ese Total (Monto 806.00 + Propina 80.60 → 886.60).
+- Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.`
 
 type Extractor struct {
 	apiKey, model, baseURL string
