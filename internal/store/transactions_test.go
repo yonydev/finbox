@@ -116,7 +116,7 @@ func TestListMarksEditedTransactions(t *testing.T) {
 	if err != nil || len(rows) != 1 || rows[0].Edited {
 		t.Fatalf("before edit: %v %+v", err, rows)
 	}
-	if err := s.EditTransaction(ctx, txnID, map[string]any{"merchant": "Walmart Express"},
+	if err := s.EditTransaction(ctx, txnID, map[string]any{"merchant_canon": "Walmart Express"},
 		[]FieldEdit{{Field: "merchant", Old: "Walmart", New: "Walmart Express"}}); err != nil {
 		t.Fatal(err)
 	}

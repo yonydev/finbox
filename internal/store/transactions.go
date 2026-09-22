@@ -21,20 +21,22 @@ type NewItem struct {
 }
 
 type NewTransaction struct {
-	OccurredOn  time.Time
-	Merchant    string
-	AmountMinor int64
-	Currency    string
-	Source      string
-	Items       []NewItem
-	Edits       []FieldEdit // corrections applied before confirm (reply-parser); logged in the same tx
+	OccurredOn time.Time
+	Merchant   string
+	// MerchantCanon is the name shown to the user; "" means "same as Merchant".
+	MerchantCanon string
+	AmountMinor   int64
+	Currency      string
+	Source        string
+	Items         []NewItem
+	Edits         []FieldEdit // corrections applied before confirm (reply-parser); logged in the same tx
 }
 
 type TxnRow struct {
-	ID, ShortID, Merchant, Currency, Source, ReceiptID string
-	OccurredOn                                         time.Time
-	AmountMinor                                        int64
-	Edited                                             bool // has edit_log rows; only populated by ListTransactions
+	ID, ShortID, Merchant, MerchantCanon, Currency, Source, ReceiptID string
+	OccurredOn                                                        time.Time
+	AmountMinor                                                       int64
+	Edited                                                            bool // has edit_log rows; only populated by ListTransactions
 }
 
 type CurrencyTotal struct {
@@ -51,9 +53,9 @@ const insertEditLog = `insert into edit_log (transaction_id, field, old_value, n
 // AddTransaction inserts a manual (receipt-less) transaction and returns it.
 func (s *Store) AddTransaction(ctx context.Context, t NewTransaction) (TxnRow, error) {
 	var id string
-	err := s.pool.QueryRow(ctx, `insert into transactions (occurred_on, merchant, amount_minor, currency, source)
-		values ($1,$2,$3,$4,$5) returning id`,
-		t.OccurredOn, t.Merchant, t.AmountMinor, t.Currency, t.Source).Scan(&id)
+	err := s.pool.QueryRow(ctx, `insert into transactions (occurred_on, merchant, merchant_canon, amount_minor, currency, source)
+		values ($1,$2,coalesce(nullif($3,''),$2),$4,$5,$6) returning id`,
+		t.OccurredOn, t.Merchant, t.MerchantCanon, t.AmountMinor, t.Currency, t.Source).Scan(&id)
 	if err != nil {
 		return TxnRow{}, err
 	}
@@ -77,9 +79,9 @@ func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTrans
 			return nil // stale tap: no-op, completion-stamping is the caller's call
 		}
 		confirmed = true
-		err = tx.QueryRow(ctx, `insert into transactions (receipt_id, occurred_on, merchant, amount_minor, currency, source)
-			values ($1,$2,$3,$4,$5,$6) returning id`,
-			receiptID, t.OccurredOn, t.Merchant, t.AmountMinor, t.Currency, t.Source).Scan(&txnID)
+		err = tx.QueryRow(ctx, `insert into transactions (receipt_id, occurred_on, merchant, merchant_canon, amount_minor, currency, source)
+			values ($1,$2,$3,coalesce(nullif($4,''),$3),$5,$6,$7) returning id`,
+			receiptID, t.OccurredOn, t.Merchant, t.MerchantCanon, t.AmountMinor, t.Currency, t.Source).Scan(&txnID)
 		if err != nil {
 			return err
 		}
@@ -122,7 +124,7 @@ func (s *Store) DiscardReceipt(ctx context.Context, receiptID string, updateID i
 }
 
 func (s *Store) ListTransactions(ctx context.Context, limit, year int, month time.Month, loc *time.Location) ([]TxnRow, error) {
-	q := `select t.id, t.merchant, t.currency, t.source, coalesce(t.receipt_id::text,''), t.occurred_on, t.amount_minor,
+	q := `select t.id, t.merchant, coalesce(nullif(t.merchant_canon,''), t.merchant), t.currency, t.source, coalesce(t.receipt_id::text,''), t.occurred_on, t.amount_minor,
 		exists(select 1 from edit_log el where el.transaction_id = t.id)
 		from transactions t where t.voided_at is null`
 	args := []any{}
@@ -140,7 +142,7 @@ func (s *Store) ListTransactions(ctx context.Context, limit, year int, month tim
 	var out []TxnRow
 	for rows.Next() {
 		var r TxnRow
-		if err := rows.Scan(&r.ID, &r.Merchant, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor, &r.Edited); err != nil {
+		if err := rows.Scan(&r.ID, &r.Merchant, &r.MerchantCanon, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor, &r.Edited); err != nil {
 			return nil, err
 		}
 		r.ShortID = r.ID[:8]
@@ -149,11 +151,11 @@ func (s *Store) ListTransactions(ctx context.Context, limit, year int, month tim
 	return out, rows.Err()
 }
 
-const txnRowCols = `id, merchant, currency, source, coalesce(receipt_id::text,''), occurred_on, amount_minor`
+const txnRowCols = `id, merchant, coalesce(nullif(merchant_canon,''), merchant), currency, source, coalesce(receipt_id::text,''), occurred_on, amount_minor`
 
 func scanTxnRow(row pgx.Row) (TxnRow, error) {
 	var r TxnRow
-	err := row.Scan(&r.ID, &r.Merchant, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor)
+	err := row.Scan(&r.ID, &r.Merchant, &r.MerchantCanon, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TxnRow{}, ErrNotFound
 	}
@@ -197,7 +199,9 @@ func (s *Store) MonthTotals(ctx context.Context, year int, month time.Month, loc
 	return totals, count, rows.Err()
 }
 
-var allowedEditCols = map[string]bool{"amount_minor": true, "merchant": true, "occurred_on": true, "currency": true}
+// merchant is not here on purpose: the raw receipt text is never edited, a
+// rename writes merchant_canon.
+var allowedEditCols = map[string]bool{"amount_minor": true, "merchant_canon": true, "occurred_on": true, "currency": true}
 
 func (s *Store) EditTransaction(ctx context.Context, txnID string, set map[string]any, edits []FieldEdit) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -289,4 +293,46 @@ func (s *Store) ResolveID(ctx context.Context, prefix string) (string, string, e
 	default:
 		return "", "", ErrAmbiguous
 	}
+}
+
+// RecanonTransactions recomputes merchant_canon with canon for every active
+// transaction the user has never renamed, and returns the changes as
+// {id, raw, canon}. dryRun stops before the writes. Rows carrying a 'merchant'
+// edit_log row are skipped: the human's name wins over the normalizer. Writes
+// no edit_log rows — a normalizer pass is not a human edit — and is
+// idempotent, so it is safe to run on every deploy.
+func (s *Store) RecanonTransactions(ctx context.Context, canon func(string) string, dryRun bool) ([][3]string, error) {
+	rows, err := s.pool.Query(ctx, `select t.id, t.merchant, t.merchant_canon from transactions t
+		where t.voided_at is null
+		  and not exists (select 1 from edit_log el where el.transaction_id = t.id and el.field = 'merchant')
+		order by t.created_at`)
+	if err != nil {
+		return nil, err
+	}
+	var changes [][3]string
+	for rows.Next() {
+		var id, raw, cur string
+		if err := rows.Scan(&id, &raw, &cur); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if c := canon(raw); c != cur {
+			changes = append(changes, [3]string{id, raw, c})
+		}
+	}
+	rows.Close() // not deferred: the updates below need the connection back
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if dryRun {
+		return changes, nil
+	}
+	for _, c := range changes {
+		if _, err := s.pool.Exec(ctx,
+			`update transactions set merchant_canon=$2, updated_at=now() where id=$1 and merchant_canon <> $2`,
+			c[0], c[2]); err != nil {
+			return changes, err
+		}
+	}
+	return changes, nil
 }
