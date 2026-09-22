@@ -22,6 +22,7 @@ const systemPrompt = `Eres un extractor de tickets de compra mexicanos.
 Devuelve SOLO un JSON con: merchant (string), date (YYYY-MM-DD), currency (ISO 4217, "" si no es legible),
 total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 - amount de cada item es el TOTAL DE LA LÍNEA como string decimal; omítelo si el precio no es legible.
+- Recibo digital (app de entrega, tienda en línea, PDF): envío, propina, descuento e impuestos van también como items, para que los items sumen el total.
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
 - No inventes valores: campo ilegible = "" u omitido.
@@ -61,13 +62,21 @@ func (e *Extractor) Extract(ctx context.Context, image []byte, mime string, toda
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(image))
+	part := oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{URL: dataURL})
+	if mime == "application/pdf" {
+		// Chat Completions takes PDFs as a `file` part: the API extracts the text and
+		// renders each page as an image, so the same prompt works unchanged.
+		part = oa.FileContentPart(oa.ChatCompletionContentPartFileFileParam{
+			FileData: oa.String(dataURL), Filename: oa.String("recibo.pdf"),
+		})
+	}
 	client := e.client()
 	resp, err := client.Chat.Completions.New(ctx, oa.ChatCompletionNewParams{
 		Model: oa.ChatModel(e.model), // ChatModel is a defined string type; plain string needs the conversion
 		Messages: []oa.ChatCompletionMessageParamUnion{
 			oa.SystemMessage(systemPrompt),
 			oa.UserMessage([]oa.ChatCompletionContentPartUnionParam{
-				oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{URL: dataURL}),
+				part,
 				oa.TextContentPart("Hoy es " + today.Format("2006-01-02") + ". Extrae este ticket."),
 			}),
 		},

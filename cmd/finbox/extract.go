@@ -42,7 +42,7 @@ func cmdExtract(argv []string, stdout, stderr io.Writer) int {
 	}
 	ty, ok := imgtype.Sniff(img)
 	if !ok {
-		fmt.Fprintln(stderr, "formato no soportado (se acepta JPEG, PNG, WebP)")
+		fmt.Fprintln(stderr, "formato no soportado (se acepta JPEG, PNG, WebP, PDF)")
 		return exitUsage
 	}
 	cfg, err := config.FromEnv(os.Getenv)

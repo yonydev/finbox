@@ -4,7 +4,8 @@ package messages
 
 const (
 	TooBig              = "imagen demasiado grande (máx. 20 MB)"
-	UnsupportedFormat   = "formato no soportado 📸 — solo JPEG/PNG/WebP (HEIC no: en iPhone usa Ajustes → Cámara → Formatos → Más compatible)"
+	PDFTooBig           = "PDF demasiado grande (máx. 5 MB)"
+	UnsupportedFormat   = "formato no soportado 📸 — solo JPEG/PNG/WebP/PDF (HEIC no: en iPhone usa Ajustes → Cámara → Formatos → Más compatible)"
 	Reading             = "🧾 Leyendo tu ticket…"
 	Saved               = "✅ Guardado"
 	Discarded           = "❌ Descartado"
@@ -45,7 +46,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 ─────────────
 📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
 ✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total o comercio)
-📸 JPEG, PNG o WebP · máx. 20 MB
+📸 JPEG, PNG, WebP o PDF · máx. 20 MB (PDF 5 MB)
 🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"
