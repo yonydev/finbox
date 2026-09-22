@@ -91,7 +91,7 @@ func IngestPhoto(ctx context.Context, d Deps, image []byte, tgMessageID, tgChatI
 }
 
 // Reprocess re-runs extract+validate from the stored blob.
-func Reprocess(ctx context.Context, d Deps, receiptID string, now time.Time) (Result, error) {
+func Reprocess(ctx context.Context, d Deps, receiptID string) (Result, error) {
 	rec, err := d.Store.GetReceipt(ctx, receiptID)
 	if err != nil {
 		return Result{}, err

@@ -121,7 +121,7 @@ func TestReprocessFromFailed(t *testing.T) {
 	d := deps(t, fe)
 	res, _ := IngestPhoto(context.Background(), d, jpegBytes(), 106, 7, now)
 	fe.err, fe.res = nil, goodResult()
-	res2, err := Reprocess(context.Background(), d, res.ReceiptID, now)
+	res2, err := Reprocess(context.Background(), d, res.ReceiptID)
 	if err != nil || res2.Outcome != OutcomeAwaitingConfirm {
 		t.Fatalf("reprocess: %+v %v", res2, err)
 	}
@@ -146,7 +146,7 @@ func TestReprocessConfirmedWithVoidedTxnAllowed(t *testing.T) {
 	if _, err := d.Store.VoidTransaction(context.Background(), txnID); err != nil {
 		t.Fatal(err)
 	}
-	res2, err := Reprocess(context.Background(), d, res.ReceiptID, now)
+	res2, err := Reprocess(context.Background(), d, res.ReceiptID)
 	if err != nil || res2.Outcome != OutcomeAwaitingConfirm {
 		t.Fatalf("reprocess: %+v %v", res2, err)
 	}
@@ -157,7 +157,7 @@ func TestReprocessConfirmedWithActiveTxnRejected(t *testing.T) {
 	d := deps(t, fe)
 	res, _ := IngestPhoto(context.Background(), d, jpegBytes(), 108, 7, now)
 	confirm(t, d, res.ReceiptID)
-	res2, err := Reprocess(context.Background(), d, res.ReceiptID, now)
+	res2, err := Reprocess(context.Background(), d, res.ReceiptID)
 	if err != nil || res2.Outcome != OutcomeRejected {
 		t.Fatalf("reprocess: %+v %v", res2, err)
 	}

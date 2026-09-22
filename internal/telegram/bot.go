@@ -162,7 +162,7 @@ func (b *Bot) handleDuplicate(ctx context.Context, chat, msgID int64, existingID
 	}
 	switch existing.Status {
 	case "discarded", "failed":
-		res, err := pipeline.Reprocess(ctx, b.d, existing.ID, time.Now())
+		res, err := pipeline.Reprocess(ctx, b.d, existing.ID)
 		if err != nil {
 			b.d.Log.Error("reprocess on duplicate failed", "err", err)
 			b.edit(ctx, chat, msgID, messages.SomethingWrong, nil)
@@ -287,7 +287,7 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		}
 		return false
 	case "r":
-		res, err := pipeline.Reprocess(ctx, b.d, rec.ID, time.Now())
+		res, err := pipeline.Reprocess(ctx, b.d, rec.ID)
 		if err != nil {
 			b.d.Log.Error("reprocess failed", "err", err)
 			return true

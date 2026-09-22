@@ -19,7 +19,7 @@ func (b *Bot) BootSweep(ctx context.Context) error {
 	}
 	for _, rec := range stale {
 		b.d.Log.Info("resuming stranded receipt", "receipt", rec.ID)
-		res, err := pipeline.Reprocess(ctx, b.d, rec.ID, time.Now())
+		res, err := pipeline.Reprocess(ctx, b.d, rec.ID)
 		if err != nil {
 			b.d.Log.Error("boot reprocess failed", "receipt", rec.ID, "err", err)
 			continue
