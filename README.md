@@ -82,6 +82,8 @@ go run ./cmd/finbox serve
 
 `serve` runs the bot and pipeline as a daemon. Every other subcommand (`list`, `edit`, `void`, `reprocess`, ...) is a one-shot CLI call against the same database. Either prefix them with `go run ./cmd/finbox` or build the binary once: `go build -o finbox ./cmd/finbox`.
 
+Receipts can be photos (JPEG, PNG, WebP) or PDFs sent as a Telegram document; a PDF goes to OpenAI as a file and follows the same pipeline.
+
 Cost note: extraction uses `gpt-4.1-mini` vision — about $0.001 per receipt (a 960×1280 photo is ~2k image tokens), so normal personal use lands well under $1/month of OpenAI credit. Override with `FINBOX_OPENAI_MODEL`.
 
 ## First-run bootstrap
