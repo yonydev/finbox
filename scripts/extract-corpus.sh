@@ -3,7 +3,7 @@
 # per model, so a prompt/model change is measured with `diff -r out/<before> out/<after>`.
 #
 # Blobs (never committed, testdata/real/ is gitignored):  rclone copy r2crypt:receipts testdata/real
-# Run:  scripts/extract-corpus.sh                     # model from FINBOX_OPENAI_MODEL, default gpt-4o-mini
+# Run:  scripts/extract-corpus.sh                     # model from FINBOX_OPENAI_MODEL, default gpt-4.1-mini
 #       FINBOX_OPENAI_MODEL=gpt-4o scripts/extract-corpus.sh
 # Resumable: an existing out/<model>/<sha>.json is skipped; failures are listed and do not stop the loop,
 # rerun to pick them up. Same model but a new prompt: `mv out/<model> out/<model>-before` first.

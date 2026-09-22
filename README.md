@@ -1,27 +1,27 @@
 # finbox
 
-finbox turns a photo of a receipt into a structured expense: send it to a Telegram bot, tap Confirm, and the expense shows up in Postgres. It's one Go binary that runs as either a Telegram bot daemon or a CLI, built to run on a Raspberry Pi for near-zero infrastructure cost.
+finbox turns a photo or PDF of a receipt into a structured expense: send it to a Telegram bot, fix anything wrong by replying to the card, tap Confirm, and the expense shows up in Postgres. It's one Go binary that runs as either a Telegram bot daemon or a CLI, built to run on a Raspberry Pi for near-zero infrastructure cost.
 
 ```mermaid
 flowchart LR
-    YOU(["📱 You<br/>photo of receipt"])
+    YOU(["📱 You<br/>photo or PDF of a receipt"])
     TG["Telegram API"]
     OAI["OpenAI API<br/>vision · extraction"]
 
-    subgraph PI["Raspberry Pi 5 · Docker Compose — dev on laptop, deploy at end of Phase 1"]
+    subgraph PI["Raspberry Pi 5 · Docker Compose"]
         subgraph FD["finbox serve · daemon mode"]
-            BOT["internal/telegram<br/>confirm ✅ ❌ · /list /month /pending /help"]
+            BOT["internal/telegram<br/>confirm ✅ ❌ · reply to correct · /list /month /pending /help"]
             subgraph PL["internal/pipeline"]
                 direction LR
-                F["fetch"] --> X["extract<br/>⟨Extractor⟩"] --> V["validate<br/>code · PAN scrub"] --> S["persist"]
+                F["fetch"] --> X["extract<br/>⟨Extractor⟩ · image or PDF + today"] --> V["validate<br/>PAN scrub · canonical merchant"] --> S["persist"]
             end
             BOT --> PL
         end
         CLI["finbox · CLI mode<br/>same binary · --json · exit codes"]
         CMD["internal/command<br/>shared command registry"]
-        BLOB["⟨BlobStore⟩ → blob/fs<br/>/data/receipts · SSD"]
+        BLOB["⟨BlobStore⟩ → blob/fs<br/>/data/receipts"]
         STORE["internal/store<br/>pgx · migrations"]
-        PG[("PostgreSQL<br/>pgvector ready · SSD")]
+        PG[("PostgreSQL<br/>pgvector ready")]
     end
 
     WEB["Phase 2 · dashboard<br/>served from the Pi over Tailscale"]
@@ -29,8 +29,8 @@ flowchart LR
 
     YOU -- "photo" --> TG
     TG <-- "long polling · outbound only" --> BOT
-    F -- "original image" --> BLOB
-    X <-- "image ⇄ structured JSON" --> OAI
+    F -- "original file" --> BLOB
+    X <-- "image/PDF ⇄ structured JSON" --> OAI
     S -- "validated txn" --> STORE
     BOT -- "queries" --> CMD
     CLI -- "queries" --> CMD
@@ -82,7 +82,7 @@ go run ./cmd/finbox serve
 
 `serve` runs the bot and pipeline as a daemon. Every other subcommand (`list`, `edit`, `void`, `reprocess`, ...) is a one-shot CLI call against the same database. Either prefix them with `go run ./cmd/finbox` or build the binary once: `go build -o finbox ./cmd/finbox`.
 
-Cost note: extraction uses `gpt-4.1-mini` vision — about $0.001 per receipt (a 960×1280 photo is ~2k image tokens), so normal personal use lands well under $1/month of OpenAI credit. Override with `FINBOX_OPENAI_MODEL`.
+Cost note: extraction uses `gpt-4.1-mini` vision — about $0.001 per receipt (a 960×1280 photo is ~2k image tokens), so normal personal use lands well under $1/month of OpenAI credit. Override with `FINBOX_OPENAI_MODEL`. The only guard against runaway spend is the monthly limit in your OpenAI dashboard; set one.
 
 ## First-run bootstrap
 
@@ -95,7 +95,19 @@ Cost note: extraction uses `gpt-4.1-mini` vision — about $0.001 per receipt (a
 
 ## Daily use
 
-Send a photo of a receipt to the bot — for long receipts, send it **as a file** (📎 → File) so Telegram doesn't downscale it below what extraction can read; JPEG/PNG/WebP only (iPhone HEIC originals are rejected — set Camera → Formats → Most Compatible). It replies with a summary card (merchant, date, total, items, any warnings) and `✅ Confirmar` / `❌ Descartar` buttons. Confirming inserts the expense; discarding leaves the receipt on record but out of your totals. A discarded card keeps a `🔄 Reintentar` button, and re-sending the same photo also revives it with a fresh confirm card — nothing is lost by discarding.
+Send a photo of a receipt to the bot, or a PDF (online orders, delivery apps) as a document. For long paper receipts, send the photo **as a file** (📎 → File) so Telegram doesn't downscale it below what extraction can read. Accepted: JPEG, PNG, WebP, PDF (iPhone HEIC originals are rejected — set Camera → Formats → Most Compatible). The bot replies with a summary card (merchant, date, total, items, any warnings) and `✅ Confirmar` / `❌ Descartar` buttons. Confirming inserts the expense; discarding leaves the receipt on record but out of your totals. A discarded card keeps a `🔄 Reintentar` button, and re-sending the same photo also revives it with a fresh confirm card — nothing is lost by discarding.
+
+**Fix a wrong read by replying to the card** with the correct value; the bot works out which field you mean:
+
+- `15/09`, `15/09/2026`, `ayer` → date
+- `285.00`, `$1,300.50`, `-120` → total (negative = refund)
+- `USD` → currency
+- `Oxxo Reforma` or `comercio Farmacia 24` → merchant name
+- `total 285 fecha 15/09` → two fields in one message
+
+Replying to a **pending** card edits the draft in place and keeps the buttons, so you confirm what you see. Replying to a **saved** card edits the expense. A receipt that failed extraction revives when you reply the missing value. Free-form text (more than four words, or words mixed with digits) is not guessed: the bot answers with examples instead.
+
+**Merchant names.** Each expense keeps the merchant exactly as the ticket printed it, plus a canonical display name: `FARMACIAS BENAVIDES S.A.B. DE C.V.` shows as `FARMACIAS BENAVIDES`, `Clip mx*rest la delici` as `rest la delici`. When the two differ, the card shows the ticket text on a second line (`en el ticket: …`). Renaming a merchant (reply or `finbox edit --merchant`) changes the display name for that expense only; the raw text is never edited.
 
 Bot commands:
 
@@ -107,13 +119,27 @@ Bot commands:
 CLI commands, same underlying data:
 
 ```bash
-finbox list --json
-finbox edit <id> --total 285.00
+finbox list --json                          # merchant (raw) and merchant_canon (display) both present
+finbox add --total 120 --merchant Zapatería --date ayer
+finbox edit <id> --total 285.00 --merchant "la Comer"
 finbox void <id>
-finbox reprocess <id>
+finbox reprocess <id>                       # re-extract a pending/failed/discarded receipt
+finbox extract ticket.jpg --json --today 2026-09-15   # one local file, no database
+finbox rerule --dry-run                     # recompute canonical merchant names, show the diff
 ```
 
 Every read/write CLI command accepts `--json` for scripting, with stable exit codes (`0` ok, `1` runtime error, `2` usage error, `3` not found/ambiguous id). `<id>` can be a full UUID or its 8-character short prefix, same one shown in `/list` and `finbox list`.
+
+## Measuring the extractor
+
+Every prompt or model change is measured before it ships, on your own receipts. Copy real receipt files into `testdata/real/` (gitignored), then:
+
+```bash
+scripts/extract-corpus.sh                          # default model → out/gpt-4.1-mini/<sha>.json
+FINBOX_OPENAI_MODEL=gpt-4.1 scripts/extract-corpus.sh
+```
+
+The script runs `finbox extract --json --today <file mtime>` per blob, resumes where it left off, and paces calls for the OpenAI rate limit. Compare `out/<before>` and `out/<after>` (or against your confirmed expenses) before changing the prompt or the default model. The extractor is told the reference date on every call — the upload day in the bot, the file's mtime here — because that is what disambiguates `09/10` and two-digit years on Mexican tickets.
 
 ## Deploying to your own Pi / server
 
@@ -126,9 +152,9 @@ FINBOX_DEPLOY_HOST=me@my-server ./deploy.sh
 
 The target needs: Docker with the compose plugin, a clone of this repo at `~/finbox` (override with `FINBOX_DEPLOY_DIR`), a filled `.env` (use the **production** bot token there, and set a real `POSTGRES_PASSWORD`), and a sentinel file marking your data disk so the script refuses to run against an unmounted volume: `touch /your/data/disk/.finbox-ssd` and set `FINBOX_DATA_SENTINEL` to that path (or `FINBOX_DATA_SENTINEL=skip` if the guard doesn't apply to your setup).
 
-The script builds the image on the target, brings up Postgres, runs migrations, restarts the app, and verifies the new version responds. The final smoke is real, not a `sleep`: the deploy fails if the bot doesn't reach Telegram long-polling within 45s, or if `finbox list --json` doesn't run against the migrated database.
+The script builds the image on the target, brings up Postgres, writes a pre-migration dump, runs migrations and `finbox rerule`, restarts the app, and verifies the new version responds. The final smoke is real, not a `sleep`: the deploy fails if the bot doesn't reach Telegram long-polling within 45s, or if `finbox list --json` doesn't run against the migrated database.
 
-Backups are out of `deploy.sh`'s scope beyond the pre-migration dump it writes. `scripts/backup-offsite.sh` is the optional nightly job that dumps Postgres and copies both the dumps and the receipt blobs off-site to Cloudflare R2, encrypted with an rclone `crypt` remote; setup lives in the Pi deploy runbook (`docs/deploy-pi.md`, §5 and §7).
+Backups are out of `deploy.sh`'s scope beyond the pre-migration dump it writes. `scripts/backup-offsite.sh` is the optional nightly job for root's crontab: it dumps Postgres, rotates local dumps, and `rclone copy`s both the dumps and the receipt blobs to an S3-compatible bucket (Cloudflare R2) through an rclone `crypt` remote, so content and file names are encrypted before they leave the machine. It needs `rclone` ≥ 1.75 and a `crypt` remote named `r2crypt` in root's `rclone.conf`; on failure it messages you through the bot. Before any migration that transforms data, restore your latest dump into a scratch database and run `migrate` plus `rerule --dry-run` against it first.
 
 ## Testing
 
