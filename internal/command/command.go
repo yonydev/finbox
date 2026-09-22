@@ -179,7 +179,7 @@ func Void(ctx context.Context, st *store.Store, idPrefix string) (string, error)
 	return txnID, nil
 }
 
-func Reprocess(ctx context.Context, d pipeline.Deps, idPrefix string, now time.Time) (pipeline.Result, error) {
+func Reprocess(ctx context.Context, d pipeline.Deps, idPrefix string) (pipeline.Result, error) {
 	kind, id, err := d.Store.ResolveID(ctx, idPrefix)
 	if err != nil {
 		return pipeline.Result{}, err
@@ -187,5 +187,5 @@ func Reprocess(ctx context.Context, d pipeline.Deps, idPrefix string, now time.T
 	if kind != "receipt" {
 		return pipeline.Result{}, fmt.Errorf("reprocess opera sobre recibos, no gastos")
 	}
-	return pipeline.Reprocess(ctx, d, id, now)
+	return pipeline.Reprocess(ctx, d, id)
 }

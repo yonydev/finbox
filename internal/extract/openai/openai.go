@@ -24,7 +24,16 @@ total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 - amount de cada item es el TOTAL DE LA LÍNEA como string decimal; omítelo si el precio no es legible.
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
-- No inventes valores: campo ilegible = "" u omitido.`
+- No inventes valores: campo ilegible = "" u omitido.
+Fecha (el mensaje del usuario dice la fecha de hoy):
+- Es la fecha de la compra o del pago; no vencimiento, entrega ni vigencia.
+- Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy.
+- Año de dos dígitos AA = 20AA (26 → 2026). Sin año impreso: el de hoy, o el anterior si quedaría en el futuro. La fecha nunca es posterior a hoy.
+- Sin ninguna fecha legible: date = "".
+Total:
+- total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
+- Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
+- Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.`
 
 type Extractor struct {
 	apiKey, model, baseURL string
@@ -44,7 +53,9 @@ func (e *Extractor) client() oa.Client {
 	return oa.NewClient(opts...)
 }
 
-func (e *Extractor) Extract(ctx context.Context, image []byte, mime string) (extract.Result, error) {
+// today is the reference date the prompt's date rules lean on (upload day in
+// prod, blob mtime in the corpus): it disambiguates DD/MM vs MM/DD and 2-digit years.
+func (e *Extractor) Extract(ctx context.Context, image []byte, mime string, today time.Time) (extract.Result, error) {
 	// The bot's poll loop is sequential with no deadline of its own; without
 	// this bound one slow request blocks confirmations and commands.
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -57,7 +68,7 @@ func (e *Extractor) Extract(ctx context.Context, image []byte, mime string) (ext
 			oa.SystemMessage(systemPrompt),
 			oa.UserMessage([]oa.ChatCompletionContentPartUnionParam{
 				oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{URL: dataURL}),
-				oa.TextContentPart("Extrae este ticket."),
+				oa.TextContentPart("Hoy es " + today.Format("2006-01-02") + ". Extrae este ticket."),
 			}),
 		},
 		ResponseFormat: oa.ChatCompletionNewParamsResponseFormatUnion{

@@ -22,7 +22,7 @@ fail=0
 while read -r f; do
   sha=$(basename "$f"); sha=${sha%.*}
   [ -s "$out/$sha.json" ] && continue
-  if FINBOX_OPENAI_MODEL=$model "$out/.finbox" extract "$f" --json > "$out/$sha.json.tmp"; then
+  if FINBOX_OPENAI_MODEL=$model "$out/.finbox" extract "$f" --json --today "$(date -r "$f" +%F)" > "$out/$sha.json.tmp"; then
     mv "$out/$sha.json.tmp" "$out/$sha.json"   # tmp+mv: a failed call never leaves a half JSON that resume would skip
   else
     echo "FAIL $f" >&2; rm -f "$out/$sha.json.tmp"; fail=$((fail+1))

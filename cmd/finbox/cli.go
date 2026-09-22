@@ -285,7 +285,7 @@ func cmdReprocess(argv []string, stdout, stderr io.Writer) int {
 		}
 		d := pipeline.Deps{Store: e.st, Blob: fs.New(e.cfg.BlobDir),
 			Extractor: openai.New(e.cfg.OpenAIKey, e.cfg.OpenAIModel), Loc: e.cfg.Loc, Log: logger()}
-		res, err := command.Reprocess(e.ctx, d, id, time.Now())
+		res, err := command.Reprocess(e.ctx, d, id)
 		if err != nil {
 			return mapErr(stderr, *asJSON, err)
 		}
