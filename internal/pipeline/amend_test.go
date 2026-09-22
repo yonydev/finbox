@@ -37,7 +37,7 @@ func TestAmendPendingCardMultiField(t *testing.T) {
 		t.Fatalf("amend: %+v %v", res, err)
 	}
 	v := res.Validated
-	if v.AmountMinor != 40000 || v.Merchant != "Soriana" || v.OccurredOn.Format("2006-01-02") != "2026-08-27" || len(v.Items) != 1 {
+	if v.AmountMinor != 40000 || v.Merchant != "Walmart" || v.MerchantCanon != "Soriana" || v.OccurredOn.Format("2006-01-02") != "2026-08-27" || len(v.Items) != 1 {
 		t.Fatalf("validated = %+v", v)
 	}
 	if hasPrefix(v.Warnings, validate.ItemsWarnPrefix) { // S4: the human's total is not second-guessed

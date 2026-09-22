@@ -9,7 +9,7 @@ import (
 
 func final() validate.Validated {
 	return validate.Validated{
-		Merchant: "Farmacia 24", OccurredOn: time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
+		Merchant: "Farmacia 24", MerchantCanon: "Farmacia 24", OccurredOn: time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
 		Currency: "MXN", AmountMinor: 28500,
 	}
 }
@@ -68,5 +68,22 @@ func TestEditsFromRawTotalUsesRawCurrency(t *testing.T) {
 	got := edits(t, `{"currency":"MXN","total":"285.50"}`, v)
 	if got["total"] != [2]string{"28550", "285"} {
 		t.Errorf("total = %v", got["total"])
+	}
+}
+
+// The rename diff is canon-vs-canon: the raw name is normalized the same way
+// on both sides, so the corporate form the user dropped is not logged as an
+// edit and the real rename still is.
+func TestEditsFromRawMerchantDiffsCanon(t *testing.T) {
+	v := final()
+	v.Merchant, v.MerchantCanon = "FARMACIA 24 S.A. DE C.V.", "Farmacia 24"
+	got := edits(t, `{"merchant":"FARMACIA 24 S.A. DE C.V."}`, v)
+	if got["merchant"] != [2]string{"FARMACIA 24", "Farmacia 24"} {
+		t.Errorf("merchant = %v", got["merchant"])
+	}
+	// same raw, canon untouched by the user: nothing to log
+	v.MerchantCanon = "FARMACIA 24"
+	if got := edits(t, `{"merchant":"FARMACIA 24 S.A. DE C.V."}`, v); len(got) != 0 {
+		t.Errorf("normalizer counted as an edit: %+v", got)
 	}
 }

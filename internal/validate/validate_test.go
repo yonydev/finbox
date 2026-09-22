@@ -159,3 +159,21 @@ func TestNegativeDiscountCountsTowardSum(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCanon(t *testing.T) {
+	ex := base()
+	ex.Merchant = "  WALMART  S.A. DE C.V. "
+	v, err := Run(ex, now, time.UTC)
+	if err != nil || v.Merchant != "WALMART  S.A. DE C.V." || v.MerchantCanon != "WALMART" {
+		t.Fatalf("normalized: %q / %q %v", v.Merchant, v.MerchantCanon, err)
+	}
+	// a stored correction wins over the normalizer, whitespace-only does not
+	ex.MerchantCanon = "Mi Walmart 4111 1111 1111 1111"
+	if v, _ := Run(ex, now, time.UTC); v.MerchantCanon != "Mi Walmart [redactado]" {
+		t.Errorf("override = %q", v.MerchantCanon)
+	}
+	ex.MerchantCanon = "   "
+	if v, _ := Run(ex, now, time.UTC); v.MerchantCanon != "WALMART" {
+		t.Errorf("blank override = %q", v.MerchantCanon)
+	}
+}

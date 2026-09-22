@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"finbox/internal/extract"
+	"finbox/internal/merchant"
 	"finbox/internal/money"
 )
 
@@ -18,12 +19,15 @@ type Item struct {
 }
 
 type Validated struct {
-	Merchant    string
-	OccurredOn  time.Time
-	Currency    string
-	AmountMinor int64
-	Items       []Item
-	Warnings    []string
+	Merchant string // raw receipt text, scrubbed and capped; never shown by default
+	// MerchantCanon is the name the user sees; equal to Merchant unless the
+	// normalizer or a correction changed it.
+	MerchantCanon string
+	OccurredOn    time.Time
+	Currency      string
+	AmountMinor   int64
+	Items         []Item
+	Warnings      []string
 }
 
 // ItemsWarnPrefix starts the items-vs-total warning; callers that trust the
@@ -82,10 +86,19 @@ func CapRunes(s string, max int) string {
 	return string(r[:max-1]) + "…"
 }
 
+// ScrubMerchant scrubs, trims and caps a merchant string. One definition for both
+// sides of a merchant diff (Run and pipeline.EditsFromRaw), so a canon edit is
+// never logged as a phantom change.
+func ScrubMerchant(s string) string { return CapRunes(strings.TrimSpace(Scrub(s)), 120) }
+
 func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, error) {
-	v := Validated{Merchant: CapRunes(strings.TrimSpace(Scrub(ex.Merchant)), 120)}
+	v := Validated{Merchant: ScrubMerchant(ex.Merchant)}
 	if v.Merchant == "" {
 		return v, fmt.Errorf("comercio ilegible")
+	}
+	v.MerchantCanon = merchant.Canon(v.Merchant)
+	if c := ScrubMerchant(ex.MerchantCanon); c != "" { // a correction outranks the normalizer
+		v.MerchantCanon = c
 	}
 	v.Currency = strings.ToUpper(strings.TrimSpace(ex.Currency))
 	if v.Currency == "" {
