@@ -41,18 +41,14 @@ type numStr string
 func (n *numStr) UnmarshalJSON(b []byte) error {
 	if len(b) > 0 && b[0] == '"' {
 		var s string
-		if err := json.Unmarshal(b, &s); err != nil {
-			return err
-		}
+		err := json.Unmarshal(b, &s)
 		*n = numStr(s)
-		return nil
-	}
-	var num json.Number // also swallows null (left empty)
-	if err := json.Unmarshal(b, &num); err != nil {
 		return err
 	}
+	var num json.Number // also swallows null (left empty)
+	err := json.Unmarshal(b, &num)
 	*n = numStr(num)
-	return nil
+	return err
 }
 
 func (it *Item) UnmarshalJSON(b []byte) error {
