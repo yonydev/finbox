@@ -34,6 +34,7 @@ func subcommands() []subcommand {
 		{"edit", "edita un gasto", cmdEdit},
 		{"void", "anula un gasto", cmdVoid},
 		{"reprocess", "reprocesa un recibo", cmdReprocess},
+		{"rerule", "recalcula el nombre de los comercios", cmdRerule},
 		{"serve", "corre el bot + pipeline", cmdServe},
 	}
 }

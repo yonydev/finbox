@@ -186,7 +186,7 @@ func TestReplyToConfirmedCardEditsTransaction(t *testing.T) {
 	b.HandleUpdate(context.Background(), replyUpdate(59, 111, rec.TgCardMessageID, "comercio Soriana"))
 
 	rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
-	if len(rows) != 1 || rows[0].Merchant != "Soriana" || !rows[0].Edited {
+	if len(rows) != 1 || rows[0].Merchant != "Walmart" || rows[0].MerchantCanon != "Soriana" || !rows[0].Edited {
 		t.Fatalf("rows = %+v", rows)
 	}
 	edits := callsOf(api, 0, "edit")
@@ -425,5 +425,33 @@ func TestBootstrapEmptyAllowlist(t *testing.T) {
 	b.HandleUpdate(context.Background(), photoUpdate(7, 12345))
 	if len(api.calls) != 0 {
 		t.Fatal("empty allowlist must not process or reply")
+	}
+}
+
+// A rename before confirming renames only what the user sees: the raw name the
+// model read stays on the row, and confirm logs exactly one merchant edit.
+func TestReplyRenamesMerchantBeforeConfirm(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 62)
+	b.HandleUpdate(context.Background(), replyUpdate(63, 111, rec.TgCardMessageID, "comercio Soriana"))
+
+	edits := callsOf(api, 0, "edit")
+	card := edits[len(edits)-1]
+	for _, want := range []string{"<b>Soriana</b>", "en el ticket: Walmart"} {
+		if !strings.Contains(card.text, want) {
+			t.Errorf("pending card missing %q:\n%s", want, card.text)
+		}
+	}
+	b.HandleUpdate(context.Background(), Update{UpdateID: 64, CallbackQuery: &CallbackQuery{
+		ID: "cbr", From: &User{ID: 111}, Data: "c|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}})
+	rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows) != 1 || rows[0].Merchant != "Walmart" || rows[0].MerchantCanon != "Soriana" || !rows[0].Edited {
+		t.Fatalf("rows = %+v", rows)
+	}
+	got := st.EditLogForTest(t, rows[0].ID)
+	if len(got) != 1 || got[0] != "merchant Walmart>Soriana reply" {
+		t.Fatalf("edit_log = %q", got)
 	}
 }

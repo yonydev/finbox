@@ -140,8 +140,12 @@ func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, now
 	}
 	if o.Merchant != "" {
 		m := validate.Scrub(strings.TrimSpace(o.Merchant))
-		set["merchant"] = m
-		edits = append(edits, store.FieldEdit{Field: "merchant", Old: cur.Merchant, New: m})
+		if m == "" {
+			return store.TxnRow{}, fmt.Errorf("el comercio no puede quedar vacío")
+		}
+		// the rename lands on the canon; the raw receipt text is never edited
+		set["merchant_canon"] = m
+		edits = append(edits, store.FieldEdit{Field: "merchant", Old: cur.MerchantCanon, New: m})
 	}
 	if o.Date != "" {
 		day, err := daytok.Parse(o.Date, now.In(loc))

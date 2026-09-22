@@ -107,7 +107,7 @@ func TestConfirmReceiptEditsAndGuard(t *testing.T) {
 		t.Fatalf("edit_log source = %q %v", src, err)
 	}
 	// FieldEdit without Source defaults to cli
-	if err := s.EditTransaction(ctx, txnID, map[string]any{"merchant": "X"}, []FieldEdit{{Field: "merchant", Old: "W", New: "X"}}); err != nil {
+	if err := s.EditTransaction(ctx, txnID, map[string]any{"merchant_canon": "X"}, []FieldEdit{{Field: "merchant", Old: "W", New: "X"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.pool.QueryRow(ctx, `select source from edit_log where transaction_id=$1 and field='merchant'`, txnID).Scan(&src); err != nil || src != "cli" {

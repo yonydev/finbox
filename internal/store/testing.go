@@ -29,3 +29,27 @@ func NewTest(tb testing.TB) *Store {
 	}
 	return s
 }
+
+// EditLogForTest returns the edit_log rows of a transaction as
+// "field old>new source", for assertions from other packages' tests.
+func (s *Store) EditLogForTest(tb testing.TB, txnID string) []string {
+	tb.Helper()
+	rows, err := s.pool.Query(context.Background(),
+		`select field, old_value, new_value, source from edit_log where transaction_id=$1 order by created_at, field`, txnID)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var field, oldV, newV, source string
+		if err := rows.Scan(&field, &oldV, &newV, &source); err != nil {
+			tb.Fatal(err)
+		}
+		out = append(out, field+" "+oldV+">"+newV+" "+source)
+	}
+	if err := rows.Err(); err != nil {
+		tb.Fatal(err)
+	}
+	return out
+}

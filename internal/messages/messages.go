@@ -18,7 +18,9 @@ const (
 	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
 	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
 	TotalMustBePositive = "el total del ticket debe ser positivo"
-	ReplyHint           = "💡 ¿algo mal? respóndeme con el dato correcto (ej. <code>15/09</code>)"
+	ReplyHint           = "💡 ¿algo mal? respóndeme con el dato correcto (ej. <code>15/09</code> o <code>comercio Oxxo</code>)"
+	// OnTicket labels the raw receipt name under a card title that was normalized.
+	OnTicket = "en el ticket: %s"
 	// CorrectionHelp carries its own HTML — send it raw, never escaped.
 	CorrectionHelp = `no te entendí 🤔
 <code>15/09</code> (o <code>ayer</code>) → fecha · <code>285.00</code> → total · <code>comercio Farmacia 24</code> → comercio

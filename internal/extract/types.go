@@ -18,10 +18,13 @@ type Item struct {
 
 type Extraction struct {
 	Merchant string `json:"merchant"`
-	Date     string `json:"date"`     // YYYY-MM-DD
-	Currency string `json:"currency"` // ISO 4217 or "" when unreadable
-	Total    string `json:"total"`    // decimal string
-	Items    []Item `json:"items"`
+	// MerchantCanon is the name to show instead of Merchant. The extractor
+	// never emits it; a reply-correction writes it (the raw stays untouched).
+	MerchantCanon string `json:"merchant_canon,omitempty"`
+	Date          string `json:"date"`     // YYYY-MM-DD
+	Currency      string `json:"currency"` // ISO 4217 or "" when unreadable
+	Total         string `json:"total"`    // decimal string
+	Items         []Item `json:"items"`
 }
 
 type Result struct {

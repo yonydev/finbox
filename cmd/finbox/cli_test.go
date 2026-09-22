@@ -112,3 +112,32 @@ func TestCLIEditNotFoundExit3(t *testing.T) {
 		t.Errorf("stderr should be JSON error, got %q", errb.String())
 	}
 }
+
+func TestCLIRerule(t *testing.T) {
+	s, _ := cliStore(t) // seeds "Walmart", which the normalizer leaves alone
+	t.Setenv("FINBOX_DB_URL", os.Getenv("TEST_DB_URL"))
+	ctx := context.Background()
+	row, err := s.AddTransaction(ctx, store.NewTransaction{OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
+		Merchant: "WALMART S.A. DE C.V.", AmountMinor: 100, Currency: "MXN", Source: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnID := row.ID
+	var out, errb bytes.Buffer
+	if code := run([]string{"finbox", "rerule", "--dry-run"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "WALMART S.A. DE C.V. → WALMART") || !strings.Contains(out.String(), "1 comercios") {
+		t.Fatalf("dry run output:\n%s", out.String())
+	}
+	if row, _ = s.GetTransactionByID(ctx, txnID); row.MerchantCanon != "WALMART S.A. DE C.V." {
+		t.Fatalf("dry run wrote %q", row.MerchantCanon)
+	}
+	out.Reset()
+	if code := run([]string{"finbox", "rerule"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if row, _ = s.GetTransactionByID(ctx, txnID); row.MerchantCanon != "WALMART" {
+		t.Fatalf("canon = %q", row.MerchantCanon)
+	}
+}

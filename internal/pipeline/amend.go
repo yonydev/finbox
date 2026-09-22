@@ -11,6 +11,7 @@ import (
 
 	"finbox/internal/correct"
 	"finbox/internal/extract"
+	"finbox/internal/merchant"
 	"finbox/internal/messages"
 	"finbox/internal/money"
 	"finbox/internal/store"
@@ -39,7 +40,8 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 		patch["total"] = f.Total
 	}
 	if f.Merchant != "" {
-		patch["merchant"] = validate.Scrub(f.Merchant) // the stored jsonb is post-scrub, always
+		// the rename lands on the canon; the raw receipt text is kept as read
+		patch["merchant_canon"] = validate.Scrub(f.Merchant) // the stored jsonb is post-scrub, always
 	}
 	if f.Date != "" {
 		patch["date"] = f.Date
@@ -70,6 +72,15 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 	var ex extract.Extraction
 	if err := json.Unmarshal(merged, &ex); err != nil {
 		return Result{}, err
+	}
+	if ex.Merchant == "" && ex.MerchantCanon != "" {
+		// the receipt failed because the merchant was unreadable: `comercio X`
+		// has to fill the raw too, or validate.Run keeps rejecting it
+		ex.Merchant = ex.MerchantCanon
+		fill, _ := json.Marshal(map[string]string{"merchant": ex.Merchant})
+		if _, _, err := d.Store.AmendExtraction(ctx, receiptID, fill); err != nil {
+			return Result{}, err
+		}
 	}
 	v, verr := validate.Run(ex, now, d.Loc)
 	if verr != nil {
@@ -128,7 +139,8 @@ func EditsFromRaw(raw []byte, v validate.Validated, source string) []store.Field
 	if minor, err := money.ParseMinor(ex.Total, rawCur); err == nil {
 		add("total", strconv.FormatInt(minor, 10), strconv.FormatInt(v.AmountMinor, 10))
 	}
-	add("merchant", validate.CapRunes(strings.TrimSpace(validate.Scrub(ex.Merchant)), 120), v.Merchant)
+	// the user renames the canon, so that is what the edit_log records
+	add("merchant", merchant.Canon(validate.ScrubMerchant(ex.Merchant)), v.MerchantCanon)
 	add("date", ex.Date, v.OccurredOn.Format("2006-01-02"))
 	return edits
 }

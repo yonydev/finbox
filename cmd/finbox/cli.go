@@ -124,18 +124,20 @@ func parseFlags(fsx *flag.FlagSet, argv []string, stdout, stderr io.Writer) (boo
 }
 
 type txnJSON struct {
-	ID          string `json:"id"`
-	ShortID     string `json:"short_id"`
-	Date        string `json:"date"`
-	Merchant    string `json:"merchant"`
-	AmountMinor int64  `json:"amount_minor"`
-	Currency    string `json:"currency"`
-	Source      string `json:"source"`
+	ID            string `json:"id"`
+	ShortID       string `json:"short_id"`
+	Date          string `json:"date"`
+	Merchant      string `json:"merchant"` // raw receipt text
+	MerchantCanon string `json:"merchant_canon"`
+	AmountMinor   int64  `json:"amount_minor"`
+	Currency      string `json:"currency"`
+	Source        string `json:"source"`
 }
 
 func toJSON(r store.TxnRow) txnJSON {
 	return txnJSON{ID: r.ID, ShortID: r.ShortID, Date: r.OccurredOn.Format("2006-01-02"),
-		Merchant: r.Merchant, AmountMinor: r.AmountMinor, Currency: r.Currency, Source: r.Source}
+		Merchant: r.Merchant, MerchantCanon: r.MerchantCanon,
+		AmountMinor: r.AmountMinor, Currency: r.Currency, Source: r.Source}
 }
 
 func cmdList(argv []string, stdout, stderr io.Writer) int {
@@ -162,7 +164,7 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 		}
 		for _, r := range rows {
 			fmt.Fprintf(stdout, "%s · %s · %s · %s\n", r.ShortID,
-				r.OccurredOn.Format("2006-01-02"), r.Merchant, money.Format(r.AmountMinor, r.Currency))
+				r.OccurredOn.Format("2006-01-02"), r.MerchantCanon, money.Format(r.AmountMinor, r.Currency))
 		}
 		return exitOK
 	})
@@ -195,7 +197,7 @@ func cmdAdd(argv []string, stdout, stderr io.Writer) int {
 			json.NewEncoder(stdout).Encode(toJSON(row))
 		} else {
 			fmt.Fprintf(stdout, "agregado %s · %s · %s · %s\n", row.ShortID,
-				row.OccurredOn.Format("2006-01-02"), row.Merchant,
+				row.OccurredOn.Format("2006-01-02"), row.MerchantCanon,
 				money.Format(row.AmountMinor, row.Currency))
 		}
 		return exitOK
@@ -228,7 +230,7 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 		if *asJSON {
 			json.NewEncoder(stdout).Encode(toJSON(row))
 		} else {
-			fmt.Fprintf(stdout, "editado %s · %s · %s\n", row.ShortID, row.Merchant,
+			fmt.Fprintf(stdout, "editado %s · %s · %s\n", row.ShortID, row.MerchantCanon,
 				money.Format(row.AmountMinor, row.Currency))
 		}
 		return exitOK

@@ -238,7 +238,7 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		}
 		edits := pipeline.EditsFromRaw(rec.ExtractionRaw, v, "reply")
 		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
-			OccurredOn: v.OccurredOn, Merchant: v.Merchant, AmountMinor: v.AmountMinor,
+			OccurredOn: v.OccurredOn, Merchant: v.Merchant, MerchantCanon: v.MerchantCanon, AmountMinor: v.AmountMinor,
 			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v), Edits: edits,
 		}, updateID, &rec.UpdatedAt)
 		if err != nil {
@@ -355,7 +355,8 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 		if verr != nil {
 			b.d.Log.Warn("re-render sin items", "receipt", rec.ID, "err", verr)
 		}
-		v.Merchant, v.OccurredOn, v.Currency, v.AmountMinor = row.Merchant, row.OccurredOn, row.Currency, row.AmountMinor
+		v.Merchant, v.MerchantCanon = row.Merchant, row.MerchantCanon
+		v.OccurredOn, v.Currency, v.AmountMinor = row.OccurredOn, row.Currency, row.AmountMinor
 		v.Warnings = nil
 		b.edit(ctx, chat, rec.TgCardMessageID, SavedCard(short, v, true), nil)
 	} else {
