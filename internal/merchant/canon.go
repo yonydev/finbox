@@ -14,7 +14,7 @@ import (
 // processorTag is the acquirer/bank label some terminals print before the real
 // name ("CLIP*Tacos El Güero"). A separator is required, so a receipt whose
 // whole merchant IS the processor keeps its name.
-var processorTag = regexp.MustCompile(`(?i)^(?:clip|multiva|banorte|bbva|santander|mercado pago)\b[\s*·:\-–]+`)
+var processorTag = regexp.MustCompile(`(?i)^(?:clip(?:\s+mx)?|multiva|banorte|bbva|santander|mercado pago)\b[\s*·:\-–]+`)
 
 var spaces = regexp.MustCompile(`\s+`)
 

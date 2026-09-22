@@ -9,6 +9,7 @@ func TestCanon(t *testing.T) {
 		"Bodega Aurrera, S de RL de CV": "Bodega Aurrera",
 		"Grupo Comercial SAPI DE C.V.":  "Grupo Comercial",
 		"CLIP*Tacos El Güero":           "Tacos El Güero",
+		"Clip mx*rest la delici":        "rest la delici", // the real Clip terminal prints "Clip mx*"
 		"MERCADO PAGO - Cafetería":      "Cafetería",
 		"SANTANDER: Gasolinera 7":       "Gasolinera 7",
 		"CLIP":                          "CLIP",         // processor alone keeps its name
