@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"finbox/internal/extract"
+	"finbox/internal/messages"
 	"finbox/internal/store"
 )
 
@@ -181,5 +182,16 @@ func TestIngestRecoversFromExtractorPanic(t *testing.T) {
 	r, err := d.Store.GetReceipt(context.Background(), res.ReceiptID)
 	if err != nil || r.Status != "failed" || !strings.Contains(r.FailReason, "panic") {
 		t.Fatalf("receipt %+v %v", r, err)
+	}
+}
+
+func TestIngestRejectsOversizedPDF(t *testing.T) {
+	// The cap runs before any Store/Blob call, so no DB is needed.
+	fe := &fakeExtractor{res: goodResult()}
+	d := Deps{Extractor: fe, Loc: time.UTC, Log: slog.Default()}
+	pdf := append([]byte("%PDF-1.4\n"), make([]byte, MaxPDFBytes)...)
+	res, err := IngestPhoto(context.Background(), d, pdf, 1, 1, now)
+	if err != nil || res.Outcome != OutcomeRejected || res.FailReason != messages.PDFTooBig || fe.calls != 0 {
+		t.Fatalf("got %+v err=%v calls=%d", res, err, fe.calls)
 	}
 }

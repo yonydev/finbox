@@ -20,6 +20,15 @@ import (
 
 const MaxImageBytes = 20 << 20
 
+// MaxPDFBytes is a Pi resource guard, not cost control (cost scales with pages,
+// not bytes): the whole file is held in memory, base64-encoded (×1.33) and shipped
+// in one request, and a digital receipt is a few hundred KB at most.
+const MaxPDFBytes = 5 << 20
+
+// warnPromptTokens flags a request far above a normal receipt (~1–5k) so a
+// runaway PDF or a prompt bug is visible in the logs.
+const warnPromptTokens = 30_000
+
 type Extractor interface {
 	Extract(ctx context.Context, image []byte, mime string, today time.Time) (extract.Result, error)
 }
@@ -70,6 +79,9 @@ func IngestPhoto(ctx context.Context, d Deps, image []byte, tgMessageID, tgChatI
 	ty, ok := imgtype.Sniff(image)
 	if !ok {
 		return Result{Outcome: OutcomeRejected, FailReason: messages.UnsupportedFormat}, nil
+	}
+	if ty == imgtype.PDF && len(image) > MaxPDFBytes {
+		return Result{Outcome: OutcomeRejected, FailReason: messages.PDFTooBig}, nil
 	}
 	sum := sha256.Sum256(image)
 	sha := hex.EncodeToString(sum[:])
@@ -157,6 +169,10 @@ func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte,
 	}
 	d.Log.Info("extraction done", "receipt", rec.ID, "model", scrubbed.Model,
 		"prompt_tokens", exRes.PromptTokens, "completion_tokens", exRes.CompletionTokens)
+	if exRes.PromptTokens > warnPromptTokens {
+		d.Log.Warn("prompt tokens above threshold", "receipt", rec.ID, "mime", mime,
+			"prompt_tokens", exRes.PromptTokens, "model", scrubbed.Model)
+	}
 	v, verr := validate.Run(scrubbed.Extraction, now, d.Loc)
 	if verr != nil {
 		reason := verr.Error()
