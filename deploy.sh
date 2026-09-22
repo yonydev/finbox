@@ -22,6 +22,8 @@ mkdir -p backups
 docker compose exec -T postgres pg_dump -Fc -U finbox finbox > "backups/pre-migrate-\$(date +%F-%H%M%S).dump" </dev/null
 find backups -name 'pre-migrate-*.dump' -mtime +14 -delete
 docker compose run --rm -T finbox migrate </dev/null
+# Normalizes merchant names for rows nobody renamed by hand; idempotent, logs no edits.
+docker compose run --rm -T finbox rerule </dev/null
 docker compose up -d
 # Smoke: wait until THIS container start logs "polling" (--since StartedAt avoids the false negative
 # where up -d did not recreate the container and the old "polling" sits outside a fixed window),
