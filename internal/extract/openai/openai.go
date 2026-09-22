@@ -28,8 +28,8 @@ total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 Fecha (el mensaje del usuario dice la fecha de hoy):
 - Es la fecha de la compra o del pago; no vencimiento, entrega ni vigencia.
 - Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy.
-- Año de dos dígitos AA = 20AA (26 → 2026). Sin año impreso: el de hoy, o el anterior si quedaría en el futuro.
-- Entre varias lecturas válidas elige la más cercana a hoy y nunca posterior a hoy.
+- Año de dos dígitos AA = 20AA (26 → 2026). Sin año impreso: el de hoy, o el anterior si quedaría en el futuro. La fecha nunca es posterior a hoy.
+- Sin ninguna fecha legible: date = "".
 Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
 - Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
