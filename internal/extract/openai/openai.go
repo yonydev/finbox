@@ -32,7 +32,7 @@ Fecha (el mensaje del usuario dice la fecha de hoy):
 - Entre varias lecturas válidas elige la más cercana a hoy y nunca posterior a hoy.
 Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
-- Si hay PROPINA y un Total que la incluye, total es ese Total (Monto 806.00 + Propina 80.60 → 886.60).
+- Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
 - Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.`
 
 type Extractor struct {
