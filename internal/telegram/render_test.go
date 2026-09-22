@@ -13,8 +13,9 @@ import (
 func sampleValidated() validate.Validated {
 	a := int64(18900)
 	return validate.Validated{
-		Merchant: "Tacos <El Güero>", OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
-		Currency: "MXN", AmountMinor: 36400,
+		Merchant: "Tacos <El Güero> S.A. DE C.V.", MerchantCanon: "Tacos <El Güero>",
+		OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
+		Currency:   "MXN", AmountMinor: 36400,
 		Items:    []validate.Item{{Position: 1, Name: "Café", AmountMinor: &a}},
 		Warnings: []string{"⚠️ fecha futura"},
 	}
@@ -22,7 +23,8 @@ func sampleValidated() validate.Validated {
 
 func TestCardEscapesAndShowsWarnings(t *testing.T) {
 	c := Card("a3f2c9d1", sampleValidated(), false)
-	for _, want := range []string{"a3f2c9d1", "Tacos &lt;El Güero&gt;", "$364.00 MXN", "⚠️ fecha futura", "Café"} {
+	for _, want := range []string{"a3f2c9d1", "<b>Tacos &lt;El Güero&gt;</b>", "$364.00 MXN", "⚠️ fecha futura", "Café",
+		"<i>en el ticket: Tacos &lt;El Güero&gt; S.A. DE C.V.</i>"} { // canon ≠ raw: the ticket name stays one escaped line
 		if !strings.Contains(c, want) {
 			t.Errorf("card missing %q:\n%s", want, c)
 		}
@@ -70,7 +72,7 @@ func TestChunk(t *testing.T) {
 
 func listRow(shortID, merchant, currency string, amountMinor int64) store.TxnRow {
 	return store.TxnRow{ID: shortID + "-0000-0000-0000-000000000000", ShortID: shortID,
-		Merchant: merchant, Currency: currency, AmountMinor: amountMinor,
+		Merchant: merchant, MerchantCanon: merchant, Currency: currency, AmountMinor: amountMinor,
 		OccurredOn: time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)}
 }
 
@@ -145,5 +147,18 @@ func TestListTableMultiCurrencyTotals(t *testing.T) {
 func TestListTableEmpty(t *testing.T) {
 	if m := ListTable(nil); m != "" {
 		t.Fatalf("expected empty message for no rows, got %q", m)
+	}
+}
+
+func TestCardHidesTicketLineWhenCanonIsRaw(t *testing.T) {
+	v := sampleValidated()
+	v.Merchant = v.MerchantCanon
+	if c := Card("a3f2c9d1", v, false); strings.Contains(c, "en el ticket") {
+		t.Errorf("unchanged name should not repeat itself:\n%s", c)
+	}
+	// and a row that predates the canon column still shows its raw name
+	v.Merchant, v.MerchantCanon = "Tacos", ""
+	if c := Card("a3f2c9d1", v, false); !strings.Contains(c, "<b>Tacos</b>") || strings.Contains(c, "en el ticket") {
+		t.Errorf("empty canon must fall back to raw:\n%s", c)
 	}
 }

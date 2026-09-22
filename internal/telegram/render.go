@@ -21,7 +21,14 @@ func Card(shortID string, v validate.Validated, edited bool) string {
 	if edited {
 		mark = " ✏️"
 	}
-	fmt.Fprintf(&b, "🧾 <code>%s</code> · <b>%s</b>%s\n", html.EscapeString(shortID), html.EscapeString(v.Merchant), mark)
+	canon := v.MerchantCanon
+	if canon == "" {
+		canon = v.Merchant
+	}
+	fmt.Fprintf(&b, "🧾 <code>%s</code> · <b>%s</b>%s\n", html.EscapeString(shortID), html.EscapeString(canon), mark)
+	if canon != v.Merchant { // one line, so the user can still check the ticket
+		fmt.Fprintf(&b, "<i>"+messages.OnTicket+"</i>\n", html.EscapeString(validate.CapRunes(v.Merchant, 40)))
+	}
 	fmt.Fprintf(&b, "📅 %s · 💰 %s %s\n", v.OccurredOn.Format("2006-01-02"),
 		money.Format(v.AmountMinor, v.Currency), html.EscapeString(v.Currency))
 	if len(v.Items) > 0 {
@@ -99,7 +106,7 @@ func ListTable(rows []store.TxnRow) string {
 		totals[r.Currency] += r.AmountMinor
 		line := fmt.Sprintf("%-8s  %-5s  %*s  %s",
 			r.ShortID, r.OccurredOn.Format("02/01"), amtW, amounts[i],
-			validate.CapRunes(r.Merchant, merchW))
+			validate.CapRunes(r.MerchantCanon, merchW))
 		if r.Edited { // trailing so the emoji's odd width can't break column alignment
 			line += " ✏️"
 			edited++
