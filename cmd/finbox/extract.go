@@ -54,7 +54,7 @@ func cmdExtract(argv []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "falta OPENAI_API_KEY en el entorno")
 		return exitUsage
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second) // matches the extractor's own deadline; PDFs are slower than photos
 	defer cancel()
 	res, err := openai.New(cfg.OpenAIKey, cfg.OpenAIModel).Extract(ctx, img, ty.MIME(), ref)
 	if err != nil {

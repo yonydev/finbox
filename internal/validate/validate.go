@@ -125,7 +125,7 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 		}
 		if a := strings.TrimSpace(it.Amount); a != "" {
 			am, err := money.ParseMinor(a, v.Currency)
-			if err == nil && am > 0 {
+			if err == nil && am != 0 { // negative = discount/credit line, counts toward the sum
 				item.AmountMinor = &am
 				sum += am
 			} else {

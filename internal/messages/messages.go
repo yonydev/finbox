@@ -14,7 +14,7 @@ const (
 	AwaitingYourConfirm = "este ticket está esperando tu confirmación"
 	NotACommand         = "mándame una foto de un ticket 🧾 (o usa /help)"
 	SomethingWrong      = "algo salió mal, revisa los logs"
-	DownloadFailed      = "no pude descargar la foto, reintenta"
+	DownloadFailed      = "no pude descargar el archivo, reintenta"
 	ReceiptNotFound     = "recibo no encontrado"
 	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
 	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
