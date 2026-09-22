@@ -17,7 +17,7 @@ func TestFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.OpenAIModel != "gpt-4o-mini" {
+	if c.OpenAIModel != "gpt-4.1-mini" {
 		t.Errorf("default model = %q", c.OpenAIModel)
 	}
 	if len(c.AllowedUserIDs) != 2 || c.AllowedUserIDs[1] != 222 {
