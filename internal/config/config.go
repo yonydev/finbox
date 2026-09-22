@@ -26,7 +26,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		OpenAIModel: getenv("FINBOX_OPENAI_MODEL"),
 	}
 	if c.OpenAIModel == "" {
-		c.OpenAIModel = "gpt-4o-mini"
+		c.OpenAIModel = "gpt-4.1-mini"
 	}
 	if raw := strings.TrimSpace(getenv("TELEGRAM_ALLOWED_USER_IDS")); raw != "" {
 		for _, part := range strings.Split(raw, ",") {
