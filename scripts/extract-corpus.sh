@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 [ -n "${OPENAI_API_KEY:-}" ] || OPENAI_API_KEY=$(sed -n 's/^OPENAI_API_KEY=//p' .env)
 [ -n "$OPENAI_API_KEY" ] || { echo "falta OPENAI_API_KEY (entorno o .env)" >&2; exit 1; }
 export OPENAI_API_KEY
-model=${FINBOX_OPENAI_MODEL:-gpt-4o-mini}
+model=${FINBOX_OPENAI_MODEL:-gpt-4.1-mini}
 out=out/$model
 mkdir -p "$out"
 go build -o "$out/.finbox" ./cmd/finbox
