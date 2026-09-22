@@ -141,3 +141,21 @@ func TestRunHardFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestNegativeDiscountCountsTowardSum(t *testing.T) {
+	ex := base() // 189 + 175 = 364
+	ex.Items = append(ex.Items, extract.Item{Name: "Descuento", Amount: "-50.00"})
+	ex.Total = "314.00"
+	v, err := Run(ex, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Items[2].AmountMinor == nil || *v.Items[2].AmountMinor != -5000 {
+		t.Fatalf("discount must be a priced negative item: %+v", v.Items[2])
+	}
+	for _, w := range v.Warnings {
+		if strings.Contains(w, "suman") {
+			t.Fatalf("items sum to the total with the discount; warning fired: %v", v.Warnings)
+		}
+	}
+}

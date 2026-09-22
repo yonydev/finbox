@@ -12,13 +12,17 @@ import (
 	"time"
 )
 
+var lastReq []byte // body of the most recent request the fake server saw
+
 func fakeCompletion(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
-		if req, _ := io.ReadAll(r.Body); !strings.Contains(string(req), "Hoy es 2026-08-28.") {
+		req, _ := io.ReadAll(r.Body)
+		lastReq = req
+		if !strings.Contains(string(req), "Hoy es 2026-08-28.") {
 			t.Errorf("request lacks the reference date: %.300s", req)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -62,5 +66,24 @@ func TestExtractNonRetryable(t *testing.T) {
 	_, err := ex.Extract(context.Background(), []byte{0xFF, 0xD8, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "image/jpeg", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	if !errors.Is(err, ErrNonRetryable) {
 		t.Fatalf("err = %v, want ErrNonRetryable", err)
+	}
+}
+
+func TestExtractPDFSendsFilePart(t *testing.T) {
+	srv := fakeCompletion(t, 200, okBody)
+	defer srv.Close()
+	ex := New("sk-test", "gpt-4.1-mini")
+	ex.baseURL = srv.URL + "/"
+	if _, err := ex.Extract(context.Background(), []byte("%PDF-1.4\n%fake"), "application/pdf", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	body := string(lastReq)
+	for _, want := range []string{`"type":"file"`, `data:application/pdf;base64,`, `"filename":"recibo.pdf"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("request lacks %s: %.400s", want, body)
+		}
+	}
+	if strings.Contains(body, "image_url") {
+		t.Errorf("PDF must not be sent as an image part: %.400s", body)
 	}
 }

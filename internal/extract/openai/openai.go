@@ -22,6 +22,7 @@ const systemPrompt = `Eres un extractor de tickets de compra mexicanos.
 Devuelve SOLO un JSON con: merchant (string), date (YYYY-MM-DD), currency (ISO 4217, "" si no es legible),
 total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 - amount de cada item es el TOTAL DE LA LÍNEA como string decimal; omítelo si el precio no es legible.
+- En recibos digitales (app de entrega, tienda en línea, PDF) los cargos que se suman al total (envío, servicio, propina) van como items, para que los items sumen el total. En tickets de papel no agregues items de impuestos (IVA/IEPS), ahorros ni rebajas: ya están dentro de los precios de línea.
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
 - No inventes valores: campo ilegible = "" u omitido.
@@ -33,7 +34,8 @@ Fecha (el mensaje del usuario dice la fecha de hoy):
 Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
 - Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
-- Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.`
+- Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.
+- total siempre positivo: un cargo "-420.00" en la app del banco es 420.00.`
 
 type Extractor struct {
 	apiKey, model, baseURL string
@@ -61,13 +63,21 @@ func (e *Extractor) Extract(ctx context.Context, image []byte, mime string, toda
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(image))
+	part := oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{URL: dataURL})
+	if mime == "application/pdf" {
+		// Chat Completions takes PDFs as a `file` part: the API extracts the text and
+		// renders each page as an image, so the same prompt works unchanged.
+		part = oa.FileContentPart(oa.ChatCompletionContentPartFileFileParam{
+			FileData: oa.String(dataURL), Filename: oa.String("recibo.pdf"),
+		})
+	}
 	client := e.client()
 	resp, err := client.Chat.Completions.New(ctx, oa.ChatCompletionNewParams{
 		Model: oa.ChatModel(e.model), // ChatModel is a defined string type; plain string needs the conversion
 		Messages: []oa.ChatCompletionMessageParamUnion{
 			oa.SystemMessage(systemPrompt),
 			oa.UserMessage([]oa.ChatCompletionContentPartUnionParam{
-				oa.ImageContentPart(oa.ChatCompletionContentPartImageImageURLParam{URL: dataURL}),
+				part,
 				oa.TextContentPart("Hoy es " + today.Format("2006-01-02") + ". Extrae este ticket."),
 			}),
 		},

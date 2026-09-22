@@ -4,7 +4,7 @@ package messages
 
 const (
 	TooBig              = "imagen demasiado grande (máx. 20 MB)"
-	UnsupportedFormat   = "formato no soportado 📸 — solo JPEG/PNG/WebP (HEIC no: en iPhone usa Ajustes → Cámara → Formatos → Más compatible)"
+	UnsupportedFormat   = "formato no soportado 📸 — solo JPEG/PNG/WebP/PDF (HEIC no: en iPhone usa Ajustes → Cámara → Formatos → Más compatible)"
 	Reading             = "🧾 Leyendo tu ticket…"
 	Saved               = "✅ Guardado"
 	Discarded           = "❌ Descartado"
@@ -13,7 +13,7 @@ const (
 	AwaitingYourConfirm = "este ticket está esperando tu confirmación"
 	NotACommand         = "mándame una foto de un ticket 🧾 (o usa /help)"
 	SomethingWrong      = "algo salió mal, revisa los logs"
-	DownloadFailed      = "no pude descargar la foto, reintenta"
+	DownloadFailed      = "no pude descargar el archivo, reintenta"
 	ReceiptNotFound     = "recibo no encontrado"
 	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
 	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
@@ -45,7 +45,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 ─────────────
 📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
 ✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total o comercio)
-📸 JPEG, PNG o WebP · máx. 20 MB
+📸 JPEG, PNG, WebP o PDF · máx. 20 MB
 🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"

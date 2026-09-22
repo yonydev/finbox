@@ -6,6 +6,7 @@ func TestSniff(t *testing.T) {
 	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0}
 	png := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0}
 	webp := append([]byte("RIFF\x00\x00\x00\x00WEBP"), 0)
+	pdf := []byte("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj")
 	txt := []byte("hello world, not an image")
 
 	if ty, ok := Sniff(jpeg); !ok || ty != JPEG || ty.Ext() != ".jpg" || ty.MIME() != "image/jpeg" {
@@ -16,6 +17,9 @@ func TestSniff(t *testing.T) {
 	}
 	if ty, ok := Sniff(webp); !ok || ty != WebP {
 		t.Errorf("webp: %v %v", ty, ok)
+	}
+	if ty, ok := Sniff(pdf); !ok || ty != PDF || ty.Ext() != ".pdf" || ty.MIME() != "application/pdf" {
+		t.Errorf("pdf: %v %v", ty, ok)
 	}
 	if _, ok := Sniff(txt); ok {
 		t.Error("txt sniffed as image")
