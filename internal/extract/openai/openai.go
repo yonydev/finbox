@@ -28,8 +28,9 @@ total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
 - No inventes valores: campo ilegible = "" u omitido.
 Fecha (el mensaje del usuario dice la fecha de hoy):
 - Es la fecha de la compra o del pago; no vencimiento, entrega ni vigencia.
-- Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy.
+- Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy, o si DD/MM queda meses atrás y MM/DD cae en los últimos días respecto a hoy (impresora en formato americano).
 - Año de dos dígitos AA = 20AA (26 → 2026). Sin año impreso: el de hoy, o el anterior si quedaría en el futuro. La fecha nunca es posterior a hoy.
+- Recibo o aviso de servicios (CFE, agua, gas, internet): se reconoce por periodo, lecturas de medidor, límite de pago, corte o "pagar antes del". No tiene fecha de compra: si trae sello o línea "PAGADO" usa esa fecha; si no, date = la fecha de hoy, aunque el documento imprima otras; el límite de pago no es la fecha ni siendo la única impresa ni siendo futuro. Ej.: «PERIODO 07 JUL 26-04 SEP 26 · LÍMITE DE PAGO 21 SEP 2026» y hoy 2026-09-22 → date 2026-09-22.
 - Sin ninguna fecha legible: date = "".
 Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
