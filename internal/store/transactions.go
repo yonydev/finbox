@@ -25,23 +25,32 @@ type NewTransaction struct {
 	Merchant   string
 	// MerchantCanon is the name shown to the user; "" means "same as Merchant".
 	MerchantCanon string
-	AmountMinor   int64
-	Currency      string
-	Source        string
-	Items         []NewItem
-	Edits         []FieldEdit // corrections applied before confirm (reply-parser); logged in the same tx
+	// Category ("" = none) and CategorySource travel together; the DB rejects
+	// one without the other.
+	Category       string
+	CategorySource string
+	AmountMinor    int64
+	Currency       string
+	Source         string
+	Items          []NewItem
+	Edits          []FieldEdit // corrections applied before confirm (reply-parser); logged in the same tx
 }
 
 type TxnRow struct {
 	ID, ShortID, Merchant, MerchantCanon, Currency, Source, ReceiptID string
+	Category, CategorySource                                          string
 	OccurredOn                                                        time.Time
 	AmountMinor                                                       int64
 	Edited                                                            bool // has edit_log rows; only populated by ListTransactions
 }
 
-type CurrencyTotal struct {
+// CategoryTotal is one (category, currency) bucket of a month; Category "" is
+// the uncategorized bucket.
+type CategoryTotal struct {
+	Category    string
 	Currency    string
 	AmountMinor int64
+	Count       int
 }
 
 // FieldEdit is one edit_log row; Source "" means 'cli'.
@@ -79,9 +88,10 @@ func (s *Store) ConfirmReceipt(ctx context.Context, receiptID string, t NewTrans
 			return nil // stale tap: no-op, completion-stamping is the caller's call
 		}
 		confirmed = true
-		err = tx.QueryRow(ctx, `insert into transactions (receipt_id, occurred_on, merchant, merchant_canon, amount_minor, currency, source)
-			values ($1,$2,$3,coalesce(nullif($4,''),$3),$5,$6,$7) returning id`,
-			receiptID, t.OccurredOn, t.Merchant, t.MerchantCanon, t.AmountMinor, t.Currency, t.Source).Scan(&txnID)
+		err = tx.QueryRow(ctx, `insert into transactions (receipt_id, occurred_on, merchant, merchant_canon, amount_minor, currency, source, category, category_source)
+			values ($1,$2,$3,coalesce(nullif($4,''),$3),$5,$6,$7,nullif($8,''),nullif($9,'')) returning id`,
+			receiptID, t.OccurredOn, t.Merchant, t.MerchantCanon, t.AmountMinor, t.Currency, t.Source,
+			t.Category, t.CategorySource).Scan(&txnID)
 		if err != nil {
 			return err
 		}
@@ -124,7 +134,7 @@ func (s *Store) DiscardReceipt(ctx context.Context, receiptID string, updateID i
 }
 
 func (s *Store) ListTransactions(ctx context.Context, limit, year int, month time.Month, loc *time.Location) ([]TxnRow, error) {
-	q := `select t.id, t.merchant, coalesce(nullif(t.merchant_canon,''), t.merchant), t.currency, t.source, coalesce(t.receipt_id::text,''), t.occurred_on, t.amount_minor,
+	q := `select t.id, t.merchant, coalesce(nullif(t.merchant_canon,''), t.merchant), t.currency, t.source, coalesce(t.receipt_id::text,''), coalesce(t.category,''), coalesce(t.category_source,''), t.occurred_on, t.amount_minor,
 		exists(select 1 from edit_log el where el.transaction_id = t.id)
 		from transactions t where t.voided_at is null`
 	args := []any{}
@@ -142,7 +152,8 @@ func (s *Store) ListTransactions(ctx context.Context, limit, year int, month tim
 	var out []TxnRow
 	for rows.Next() {
 		var r TxnRow
-		if err := rows.Scan(&r.ID, &r.Merchant, &r.MerchantCanon, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor, &r.Edited); err != nil {
+		if err := rows.Scan(&r.ID, &r.Merchant, &r.MerchantCanon, &r.Currency, &r.Source, &r.ReceiptID,
+			&r.Category, &r.CategorySource, &r.OccurredOn, &r.AmountMinor, &r.Edited); err != nil {
 			return nil, err
 		}
 		r.ShortID = r.ID[:8]
@@ -151,11 +162,12 @@ func (s *Store) ListTransactions(ctx context.Context, limit, year int, month tim
 	return out, rows.Err()
 }
 
-const txnRowCols = `id, merchant, coalesce(nullif(merchant_canon,''), merchant), currency, source, coalesce(receipt_id::text,''), occurred_on, amount_minor`
+const txnRowCols = `id, merchant, coalesce(nullif(merchant_canon,''), merchant), currency, source, coalesce(receipt_id::text,''), coalesce(category,''), coalesce(category_source,''), occurred_on, amount_minor`
 
 func scanTxnRow(row pgx.Row) (TxnRow, error) {
 	var r TxnRow
-	err := row.Scan(&r.ID, &r.Merchant, &r.MerchantCanon, &r.Currency, &r.Source, &r.ReceiptID, &r.OccurredOn, &r.AmountMinor)
+	err := row.Scan(&r.ID, &r.Merchant, &r.MerchantCanon, &r.Currency, &r.Source, &r.ReceiptID,
+		&r.Category, &r.CategorySource, &r.OccurredOn, &r.AmountMinor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TxnRow{}, ErrNotFound
 	}
@@ -176,32 +188,33 @@ func (s *Store) GetActiveTxnForReceipt(ctx context.Context, receiptID string) (T
 	return scanTxnRow(s.pool.QueryRow(ctx, `select `+txnRowCols+` from transactions where receipt_id=$1 and voided_at is null`, receiptID))
 }
 
-func (s *Store) MonthTotals(ctx context.Context, year int, month time.Month, loc *time.Location) ([]CurrencyTotal, int, error) {
+// MonthTotals returns the month's (category, currency) buckets, ordered by
+// currency, categorized before uncategorized, then amount desc. Per-currency
+// totals and the expense count are sums of these rows — no second query.
+func (s *Store) MonthTotals(ctx context.Context, year int, month time.Month, loc *time.Location) ([]CategoryTotal, error) {
 	from := time.Date(year, month, 1, 0, 0, 0, 0, loc)
-	rows, err := s.pool.Query(ctx, `select currency, sum(amount_minor)::bigint, count(*) from transactions
+	rows, err := s.pool.Query(ctx, `select coalesce(category,''), currency, sum(amount_minor)::bigint, count(*) from transactions
 		where voided_at is null and occurred_on >= $1 and occurred_on < $2
-		group by currency order by currency`, from, from.AddDate(0, 1, 0))
+		group by 1,2 order by currency, (coalesce(category,'')=''), 3 desc`, from, from.AddDate(0, 1, 0))
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	defer rows.Close()
-	var totals []CurrencyTotal
-	count := 0
+	var totals []CategoryTotal
 	for rows.Next() {
-		var ct CurrencyTotal
-		var c int
-		if err := rows.Scan(&ct.Currency, &ct.AmountMinor, &c); err != nil {
-			return nil, 0, err
+		var ct CategoryTotal
+		if err := rows.Scan(&ct.Category, &ct.Currency, &ct.AmountMinor, &ct.Count); err != nil {
+			return nil, err
 		}
 		totals = append(totals, ct)
-		count += c
 	}
-	return totals, count, rows.Err()
+	return totals, rows.Err()
 }
 
 // merchant is not here on purpose: the raw receipt text is never edited, a
 // rename writes merchant_canon.
-var allowedEditCols = map[string]bool{"amount_minor": true, "merchant_canon": true, "occurred_on": true, "currency": true}
+var allowedEditCols = map[string]bool{"amount_minor": true, "merchant_canon": true, "occurred_on": true,
+	"currency": true, "category": true, "category_source": true}
 
 func (s *Store) EditTransaction(ctx context.Context, txnID string, set map[string]any, edits []FieldEdit) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {

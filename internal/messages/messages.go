@@ -21,9 +21,15 @@ const (
 	ReplyHint           = "💡 ¿algo mal? respóndeme con el dato correcto (ej. <code>15/09</code> o <code>comercio Oxxo</code>)"
 	// OnTicket labels the raw receipt name under a card title that was normalized.
 	OnTicket = "en el ticket: %s"
+	// NoCategory / CategoryByYou fill the 🏷 line; only the human provenance
+	// exists today ("por el comercio" arrives with the rule step).
+	NoCategory      = "sin categoría"
+	CategoryByYou   = "tú lo dijiste"
+	UnknownCategory = "categoría desconocida %q · opciones: %s"
 	// CorrectionHelp carries its own HTML — send it raw, never escaped.
 	CorrectionHelp = `no te entendí 🤔
 <code>15/09</code> (o <code>ayer</code>) → fecha · <code>285.00</code> → total · <code>comercio Farmacia 24</code> → comercio
+<code>categoria super</code> → categoría
 y varios de un jalón: <code>total 285 fecha 15/09</code>`
 	NoExpenses     = "sin gastos todavía"
 	NothingPending = "nada pendiente ✨"
@@ -37,7 +43,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 📋 /list <code>N</code>
       últimos N gastos · default 10, máx. 50
 📆 /month <code>mes</code>
-      total del mes · <code>aug</code>, <code>ago</code> o <code>2026-01</code>
+      total del mes por categoría · <code>aug</code>, <code>ago</code> o <code>2026-01</code>
 ⏳ /pending
       recibos pendientes o fallidos
 ❓ /help
@@ -46,7 +52,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 <b>Tips</b>
 ─────────────
 📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
-✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total o comercio)
+✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total, comercio o <code>categoria super</code>)
 📸 JPEG, PNG, WebP o PDF · máx. 20 MB
 🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
@@ -56,3 +62,7 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 	ListClosed  = "🧾 lista cerrada"
 	ListCapNote = "máx. 50 — usa <code>finbox list</code> para más"
 )
+
+// CategoryLabels holds the es-MX names that differ from the slug; the rest
+// render as the slug itself (category.Label).
+var CategoryLabels = map[string]string{"super": "súper", "educacion": "educación"}

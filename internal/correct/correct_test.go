@@ -2,6 +2,7 @@ package correct
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -50,6 +51,11 @@ func TestParse(t *testing.T) {
 		{"comercio Oxxo total 285", Fields{Merchant: "Oxxo", Total: "285"}},
 		{"Oxxo total 285", Fields{Merchant: "Oxxo", Total: "285"}},
 		{"total 285 moneda jpy", Fields{Total: "285", Currency: "JPY"}},
+		{"categoria super", Fields{Category: "super"}},
+		{"cat Educación", Fields{Category: "educacion"}},
+		{"categoría HOGAR", Fields{Category: "hogar"}},
+		{"total 285 categoria super", Fields{Total: "285", Category: "super"}},
+		{"super", Fields{Merchant: "super"}}, // bare word is still a merchant
 	}
 	for _, tc := range cases {
 		got, err := Parse(tc.in, now, "")
@@ -85,5 +91,20 @@ func TestParseRejects(t *testing.T) {
 	// the receipt's currency governs the total's decimals
 	if _, err := Parse("285.5", now, "JPY"); err == nil {
 		t.Error("285.5 in JPY should fail")
+	}
+}
+
+func TestParseUnknownCategory(t *testing.T) {
+	now := time.Date(2026, time.September, 18, 12, 0, 0, 0, time.UTC)
+	_, err := Parse("categoria comida", now, "")
+	if err == nil || errors.Is(err, ErrUnparseable) {
+		t.Fatalf("err = %v, want a teaching error", err)
+	}
+	if !strings.Contains(err.Error(), "restaurantes") {
+		t.Errorf("error must list the options: %v", err)
+	}
+	// ponytail: "cat" is a keyword, so a merchant starting with it mis-parses
+	if f, err := Parse("comercio Cat Cafe", now, ""); err == nil {
+		t.Errorf("known ceiling changed: %+v", f)
 	}
 }

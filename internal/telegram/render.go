@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"finbox/internal/category"
 	"finbox/internal/messages"
 	"finbox/internal/money"
 	"finbox/internal/store"
@@ -31,6 +32,11 @@ func Card(shortID string, v validate.Validated, edited bool) string {
 	}
 	fmt.Fprintf(&b, "📅 %s · 💰 %s %s\n", v.OccurredOn.Format("2006-01-02"),
 		money.Format(v.AmountMinor, v.Currency), html.EscapeString(v.Currency))
+	cat := messages.NoCategory
+	if v.Category != "" {
+		cat = category.Label(v.Category) + " · " + messages.CategoryByYou
+	}
+	fmt.Fprintf(&b, "🏷 %s\n", html.EscapeString(cat))
 	if len(v.Items) > 0 {
 		b.WriteString("─────\n")
 		for i, it := range v.Items {
@@ -127,15 +133,35 @@ func ListTable(rows []store.TxnRow) string {
 	return "<pre>" + html.EscapeString(body) + "</pre>"
 }
 
-func MonthSummary(year int, month time.Month, totals []store.CurrencyTotal, count int) string {
-	if count == 0 {
+// MonthSummary renders the month header (per-currency totals, derived from the
+// buckets) followed by one line per (category, currency) in SQL order.
+func MonthSummary(year int, month time.Month, totals []store.CategoryTotal) string {
+	if len(totals) == 0 {
 		return fmt.Sprintf("%04d-%02d: sin gastos", year, int(month))
 	}
-	parts := make([]string, 0, len(totals))
+	sums := map[string]int64{}
+	var currencies []string // order of first appearance = currency asc
+	count := 0
+	lines := make([]string, 0, len(totals))
 	for _, t := range totals {
-		parts = append(parts, fmt.Sprintf("%s %s", money.Format(t.AmountMinor, t.Currency), html.EscapeString(t.Currency)))
+		if _, seen := sums[t.Currency]; !seen {
+			currencies = append(currencies, t.Currency)
+		}
+		sums[t.Currency] += t.AmountMinor
+		count += t.Count
+		label := messages.NoCategory
+		if t.Category != "" {
+			label = category.Label(t.Category)
+		}
+		lines = append(lines, fmt.Sprintf("🏷 %s · %s %s · %d", html.EscapeString(label),
+			money.Format(t.AmountMinor, t.Currency), html.EscapeString(t.Currency), t.Count))
 	}
-	return fmt.Sprintf("<b>%04d-%02d</b>: %s · %d gastos", year, int(month), strings.Join(parts, " + "), count)
+	parts := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		parts = append(parts, fmt.Sprintf("%s %s", money.Format(sums[c], c), html.EscapeString(c)))
+	}
+	return fmt.Sprintf("<b>%04d-%02d</b>: %s · %d gastos\n%s",
+		year, int(month), strings.Join(parts, " + "), count, strings.Join(lines, "\n"))
 }
 
 // Chunk packs lines into messages of at most budget chars.

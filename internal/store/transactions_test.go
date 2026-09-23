@@ -79,14 +79,64 @@ func TestMonthTotalsPerCurrency(t *testing.T) {
 	r, _ := s.CreateReceipt(ctx, CreateReceiptParams{BlobKey: "kusd", BlobSHA256: "sha-m3", TgMessageID: 322, TgChatID: 7})
 	s.Transition(ctx, r.ID, "pending", "awaiting_confirm", "")
 	s.ConfirmReceipt(ctx, r.ID, NewTransaction{OccurredOn: aug, Merchant: "Hotel", AmountMinor: 4550, Currency: "USD", Source: "receipt"}, 0, nil)
+	r2, _ := s.CreateReceipt(ctx, CreateReceiptParams{BlobKey: "kcat", BlobSHA256: "sha-m4", TgMessageID: 323, TgChatID: 7})
+	s.Transition(ctx, r2.ID, "pending", "awaiting_confirm", "")
+	s.ConfirmReceipt(ctx, r2.ID, NewTransaction{OccurredOn: aug, Merchant: "Soriana", AmountMinor: 5000, Currency: "MXN",
+		Source: "receipt", Category: "super", CategorySource: "human"}, 0, nil)
 
-	totals, count, err := s.MonthTotals(ctx, 2026, time.August, time.UTC)
-	if err != nil || count != 3 {
-		t.Fatalf("count=%d err=%v", count, err)
+	totals, err := s.MonthTotals(ctx, 2026, time.August, time.UTC)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(totals) != 2 || totals[0].Currency != "MXN" || totals[0].AmountMinor != 48400 ||
-		totals[1].Currency != "USD" || totals[1].AmountMinor != 4550 {
+	// currency asc, categorized before uncategorized
+	want := []CategoryTotal{
+		{Category: "super", Currency: "MXN", AmountMinor: 5000, Count: 1},
+		{Category: "", Currency: "MXN", AmountMinor: 48400, Count: 2},
+		{Category: "", Currency: "USD", AmountMinor: 4550, Count: 1},
+	}
+	if len(totals) != len(want) {
 		t.Fatalf("totals = %+v", totals)
+	}
+	for i := range want {
+		if totals[i] != want[i] {
+			t.Fatalf("totals[%d] = %+v, want %+v", i, totals[i], want[i])
+		}
+	}
+}
+
+func TestConfirmPersistsCategory(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	r, _ := s.CreateReceipt(ctx, CreateReceiptParams{BlobKey: "kc", BlobSHA256: "sha-cat", TgMessageID: 340, TgChatID: 7})
+	s.Transition(ctx, r.ID, "pending", "awaiting_confirm", "")
+	txnID, ok, err := s.ConfirmReceipt(ctx, r.ID, NewTransaction{
+		OccurredOn: time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC), Merchant: "Soriana",
+		AmountMinor: 5000, Currency: "MXN", Source: "receipt", Category: "super", CategorySource: "human",
+	}, 0, nil)
+	if err != nil || !ok {
+		t.Fatalf("confirm: %v %v", ok, err)
+	}
+	row, err := s.GetTransactionByID(ctx, txnID)
+	if err != nil || row.Category != "super" || row.CategorySource != "human" {
+		t.Fatalf("row = %+v err = %v", row, err)
+	}
+	if err := s.EditTransaction(ctx, txnID, map[string]any{"category": "hogar", "category_source": "human"},
+		[]FieldEdit{{Field: "category", Old: "super", New: "hogar"}}); err != nil {
+		t.Fatal(err)
+	}
+	if rows, _ := s.ListTransactions(ctx, 10, 0, 0, time.UTC); len(rows) != 1 || rows[0].Category != "hogar" {
+		t.Fatalf("after edit: %+v", rows)
+	}
+}
+
+func TestCategoryPairConstraint(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	_, txnID := confirmed(t, s, "sha-pair", 350, 1000, time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
+	// a category without its source must not be storable: the provenance metric
+	// step 1 reads depends on the pair
+	if err := s.EditTransaction(ctx, txnID, map[string]any{"category": "super"}, nil); err == nil {
+		t.Fatal("category without category_source must be rejected")
 	}
 }
 

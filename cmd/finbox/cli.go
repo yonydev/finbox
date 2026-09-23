@@ -124,20 +124,23 @@ func parseFlags(fsx *flag.FlagSet, argv []string, stdout, stderr io.Writer) (boo
 }
 
 type txnJSON struct {
-	ID            string `json:"id"`
-	ShortID       string `json:"short_id"`
-	Date          string `json:"date"`
-	Merchant      string `json:"merchant"` // raw receipt text
-	MerchantCanon string `json:"merchant_canon"`
-	AmountMinor   int64  `json:"amount_minor"`
-	Currency      string `json:"currency"`
-	Source        string `json:"source"`
+	ID             string `json:"id"`
+	ShortID        string `json:"short_id"`
+	Date           string `json:"date"`
+	Merchant       string `json:"merchant"` // raw receipt text
+	MerchantCanon  string `json:"merchant_canon"`
+	AmountMinor    int64  `json:"amount_minor"`
+	Currency       string `json:"currency"`
+	Source         string `json:"source"`
+	Category       string `json:"category"`
+	CategorySource string `json:"category_source"`
 }
 
 func toJSON(r store.TxnRow) txnJSON {
 	return txnJSON{ID: r.ID, ShortID: r.ShortID, Date: r.OccurredOn.Format("2006-01-02"),
 		Merchant: r.Merchant, MerchantCanon: r.MerchantCanon,
-		AmountMinor: r.AmountMinor, Currency: r.Currency, Source: r.Source}
+		AmountMinor: r.AmountMinor, Currency: r.Currency, Source: r.Source,
+		Category: r.Category, CategorySource: r.CategorySource}
 }
 
 func cmdList(argv []string, stdout, stderr io.Writer) int {
@@ -163,8 +166,12 @@ func cmdList(argv []string, stdout, stderr io.Writer) int {
 			return exitOK
 		}
 		for _, r := range rows {
-			fmt.Fprintf(stdout, "%s · %s · %s · %s\n", r.ShortID,
+			line := fmt.Sprintf("%s · %s · %s · %s", r.ShortID,
 				r.OccurredOn.Format("2006-01-02"), r.MerchantCanon, money.Format(r.AmountMinor, r.Currency))
+			if r.Category != "" { // so the hand-labeling pass sees what is still empty
+				line += " · 🏷 " + r.Category
+			}
+			fmt.Fprintln(stdout, line)
 		}
 		return exitOK
 	})
@@ -210,8 +217,9 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	merchant := fsx.String("merchant", "", "nuevo comercio")
 	date := fsx.String("date", "", "nueva fecha YYYY-MM-DD, DD/MM o ayer")
 	currency := fsx.String("currency", "", "nueva moneda ISO 4217, ej. MXN")
+	cat := fsx.String("category", "", "categoría, ej. super")
 	asJSON := fsx.Bool("json", false, "salida JSON")
-	const usage = "uso: finbox edit <id> [--total N] [--merchant S] [--date D] [--currency C] [--json]"
+	const usage = "uso: finbox edit <id> [--total N] [--merchant S] [--date D] [--currency C] [--category S] [--json]"
 	setUsage(fsx, usage)
 	id, rest := popID(argv)
 	if ok, code := parseFlags(fsx, rest, stdout, stderr); !ok {
@@ -223,7 +231,8 @@ func cmdEdit(argv []string, stdout, stderr io.Writer) int {
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
 		row, err := command.Edit(e.ctx, e.st, id,
-			command.EditOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency}, time.Now(), e.cfg.Loc)
+			command.EditOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency, Category: *cat},
+			time.Now(), e.cfg.Loc)
 		if err != nil {
 			return mapErr(stderr, *asJSON, err)
 		}

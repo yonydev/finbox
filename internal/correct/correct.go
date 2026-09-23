@@ -10,14 +10,17 @@ import (
 	"strings"
 	"time"
 
+	"finbox/internal/category"
 	"finbox/internal/daytok"
+	"finbox/internal/messages"
 	"finbox/internal/money"
 )
 
 // Fields holds the corrected values as strings; empty = not mentioned.
 // Total is a clean decimal string (no "$" or thousands commas), Date is
 // YYYY-MM-DD, Currency is upper-case and known to money.
-type Fields struct{ Total, Merchant, Date, Currency string }
+// Category is a category.Slugs entry.
+type Fields struct{ Total, Merchant, Date, Currency, Category string }
 
 // ErrUnparseable is the teaching error: the text is prose, ambiguous, or a
 // keyword without a value. Nothing else is inferred from it.
@@ -28,6 +31,10 @@ var keywords = map[string]string{
 	"fecha": "date", "dia": "date", "día": "date",
 	"comercio": "merchant", "tienda": "merchant",
 	"moneda": "currency",
+	// ponytail: "cat" is a keyword, so `comercio Cat Café` mis-parses — same
+	// ceiling "dia" already has (`comercio Buen Dia`); drop the short alias if
+	// it ever bites
+	"categoria": "category", "categoría": "category", "cat": "category",
 }
 
 var numberTok = regexp.MustCompile(`^-?\$?[\d.,]+$`)
@@ -134,6 +141,13 @@ func normalize(raw map[string]string, now time.Time, currency string) (Fields, e
 			return Fields{}, err
 		}
 		f.Date = day.Format("2006-01-02")
+	}
+	if c, ok := raw["category"]; ok {
+		slug, valid := category.Parse(c)
+		if !valid {
+			return Fields{}, fmt.Errorf(messages.UnknownCategory, c, strings.Join(category.Slugs, ", "))
+		}
+		f.Category = slug
 	}
 	f.Merchant = raw["merchant"]
 	return f, nil
