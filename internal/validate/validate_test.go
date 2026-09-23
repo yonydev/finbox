@@ -177,3 +177,17 @@ func TestRunCanon(t *testing.T) {
 		t.Errorf("blank override = %q", v.MerchantCanon)
 	}
 }
+
+func TestRunCategoryProvenance(t *testing.T) {
+	ex := base()
+	ex.Category = "Súper"
+	v, err := Run(ex, now, time.UTC)
+	if err != nil || v.Category != "super" || v.CategorySource != "human" {
+		t.Fatalf("v = %+v err = %v", v, err)
+	}
+	ex.Category = "comida" // off-list: dropped, never stamped
+	v, err = Run(ex, now, time.UTC)
+	if err != nil || v.Category != "" || v.CategorySource != "" {
+		t.Fatalf("off-list kept: %+v %v", v, err)
+	}
+}

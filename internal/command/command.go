@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"finbox/internal/category"
 	"finbox/internal/daytok"
+	"finbox/internal/messages"
 	"finbox/internal/money"
 	"finbox/internal/monthtok"
 	"finbox/internal/pipeline"
@@ -30,13 +32,13 @@ func List(ctx context.Context, st *store.Store, limit int, monthTok string, now 
 	return st.ListTransactions(ctx, limit, year, m, loc)
 }
 
-func Month(ctx context.Context, st *store.Store, tok string, now time.Time, loc *time.Location) (int, time.Month, []store.CurrencyTotal, int, error) {
+func Month(ctx context.Context, st *store.Store, tok string, now time.Time, loc *time.Location) (int, time.Month, []store.CategoryTotal, error) {
 	year, m, err := monthtok.Parse(tok, now.In(loc))
 	if err != nil {
-		return 0, 0, nil, 0, err
+		return 0, 0, nil, err
 	}
-	totals, count, err := st.MonthTotals(ctx, year, m, loc)
-	return year, m, totals, count, err
+	totals, err := st.MonthTotals(ctx, year, m, loc)
+	return year, m, totals, err
 }
 
 func Pending(ctx context.Context, st *store.Store) ([]store.Receipt, error) {
@@ -77,7 +79,7 @@ func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *ti
 
 // EditOpts names the fields to change; Source is recorded on each edit_log
 // row ("" = cli).
-type EditOpts struct{ Total, Merchant, Date, Currency, Source string }
+type EditOpts struct{ Total, Merchant, Date, Currency, Category, Source string }
 
 // resolveTxn maps an id prefix of either kind to the active transaction id.
 func resolveTxn(ctx context.Context, st *store.Store, idPrefix string) (string, error) {
@@ -156,8 +158,16 @@ func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, now
 		edits = append(edits, store.FieldEdit{Field: "date",
 			Old: cur.OccurredOn.Format("2006-01-02"), New: day.Format("2006-01-02")})
 	}
+	if o.Category != "" {
+		slug, ok := category.Parse(o.Category)
+		if !ok {
+			return store.TxnRow{}, fmt.Errorf(messages.UnknownCategory, o.Category, strings.Join(category.Slugs, ", "))
+		}
+		set["category"], set["category_source"] = slug, "human"
+		edits = append(edits, store.FieldEdit{Field: "category", Old: cur.Category, New: slug})
+	}
 	if len(set) == 0 {
-		return store.TxnRow{}, fmt.Errorf("nada que editar: pasa --total, --merchant, --date o --currency")
+		return store.TxnRow{}, fmt.Errorf("nada que editar: pasa --total, --merchant, --date, --currency o --category")
 	}
 	for i := range edits {
 		edits[i].Source = o.Source

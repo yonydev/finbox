@@ -160,9 +160,9 @@ func TestListClampAndMonth(t *testing.T) {
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("list: %d %v", len(rows), err)
 	}
-	_, _, totals, count, err := Month(context.Background(), s, "", now, time.UTC)
-	if err != nil || count != 1 || totals[0].AmountMinor != 18500 {
-		t.Fatalf("month: %v %d %v", totals, count, err)
+	_, _, totals, err := Month(context.Background(), s, "", now, time.UTC)
+	if err != nil || len(totals) != 1 || totals[0].AmountMinor != 18500 || totals[0].Count != 1 {
+		t.Fatalf("month: %+v %v", totals, err)
 	}
 }
 
@@ -174,5 +174,19 @@ func TestEditScrubsMerchant(t *testing.T) {
 	}
 	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Merchant: "  "}, time.Now(), time.UTC); err == nil {
 		t.Error("blank merchant must be rejected")
+	}
+}
+
+func TestEditCategory(t *testing.T) {
+	s, _, txnID := seed(t)
+	row, err := Edit(context.Background(), s, txnID[:8], EditOpts{Category: "Súper"}, time.Now(), time.UTC)
+	if err != nil || row.Category != "super" || row.CategorySource != "human" {
+		t.Fatalf("row = %+v err = %v", row, err)
+	}
+	if log := s.EditLogForTest(t, txnID); len(log) != 1 || log[0] != "category >super cli" {
+		t.Fatalf("edit_log = %v", log)
+	}
+	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Category: "comida"}, time.Now(), time.UTC); err == nil {
+		t.Error("unknown slug must be rejected")
 	}
 }

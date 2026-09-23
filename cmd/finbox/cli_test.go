@@ -141,3 +141,24 @@ func TestCLIRerule(t *testing.T) {
 		t.Fatalf("canon = %q", row.MerchantCanon)
 	}
 }
+
+func TestCLIEditCategoryJSON(t *testing.T) {
+	_, txnID := cliStore(t)
+	t.Setenv("FINBOX_DB_URL", os.Getenv("TEST_DB_URL"))
+	var out, errb bytes.Buffer
+	if code := run([]string{"finbox", "edit", txnID[:8], "--category", "comida", "--json"}, &out, &errb); code == 0 {
+		t.Fatalf("unknown slug must fail: %s", out.String())
+	}
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"finbox", "edit", txnID[:8], "--category", "super", "--json"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var row map[string]any
+	if err := json.Unmarshal(out.Bytes(), &row); err != nil {
+		t.Fatalf("json: %v %s", err, out.String())
+	}
+	if row["category"] != "super" || row["category_source"] != "human" {
+		t.Fatalf("row = %+v", row)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"finbox/internal/category"
 	"finbox/internal/extract"
 	"finbox/internal/merchant"
 	"finbox/internal/money"
@@ -23,11 +24,15 @@ type Validated struct {
 	// MerchantCanon is the name the user sees; equal to Merchant unless the
 	// normalizer or a correction changed it.
 	MerchantCanon string
-	OccurredOn    time.Time
-	Currency      string
-	AmountMinor   int64
-	Items         []Item
-	Warnings      []string
+	// Category is a category.Slugs entry ("" = none); CategorySource is its
+	// provenance, one of llm/rule/human.
+	Category       string
+	CategorySource string
+	OccurredOn     time.Time
+	Currency       string
+	AmountMinor    int64
+	Items          []Item
+	Warnings       []string
 }
 
 // ItemsWarnPrefix starts the items-vs-total warning; callers that trust the
@@ -99,6 +104,12 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 	v.MerchantCanon = merchant.Canon(v.Merchant)
 	if c := ScrubMerchant(ex.MerchantCanon); c != "" { // a correction outranks the normalizer
 		v.MerchantCanon = c
+	}
+	// ponytail: any category in the jsonb is the human's — the extractor emits
+	// none; step 1 must diff against extraction_raw (pass it in) before the
+	// prompt gains the field, or every LLM value gets stamped human
+	if slug, ok := category.Parse(ex.Category); ok {
+		v.Category, v.CategorySource = slug, "human"
 	}
 	v.Currency = strings.ToUpper(strings.TrimSpace(ex.Currency))
 	if v.Currency == "" {

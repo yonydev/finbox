@@ -162,3 +162,38 @@ func TestCardHidesTicketLineWhenCanonIsRaw(t *testing.T) {
 		t.Errorf("empty canon must fall back to raw:\n%s", c)
 	}
 }
+
+func TestCardCategoryLine(t *testing.T) {
+	if c := Card("a3f2c9d1", sampleValidated(), false); !strings.Contains(c, "🏷 categoría: sin categoría\n") {
+		t.Errorf("uncategorized card missing the 🏷 line:\n%s", c)
+	}
+	v := sampleValidated()
+	v.Category, v.CategorySource = "educacion", "human"
+	if c := Card("a3f2c9d1", v, false); !strings.Contains(c, "🏷 categoría: educación\n") {
+		t.Errorf("labeled card missing the 🏷 line:\n%s", c)
+	}
+}
+
+func TestMonthSummaryTable(t *testing.T) {
+	got := MonthSummary(2026, time.August, []store.CategoryTotal{
+		{Category: "super", Currency: "MXN", AmountMinor: 5000, Count: 1},
+		{Category: "", Currency: "MXN", AmountMinor: 48400, Count: 2},
+	})
+	want := "<b>2026-08</b> · $534.00 MXN · 3 gastos\n<pre>" +
+		"súper               $50.00   1\n" +
+		"sin categoría      $484.00   2</pre>"
+	if got != want {
+		t.Errorf("MonthSummary =\n%s\nwant\n%s", got, want)
+	}
+	// a second currency: per-currency header totals and the code on each row
+	mixed := MonthSummary(2026, time.August, []store.CategoryTotal{
+		{Category: "", Currency: "MXN", AmountMinor: 48400, Count: 2},
+		{Category: "", Currency: "USD", AmountMinor: 4550, Count: 1},
+	})
+	if !strings.Contains(mixed, "$484.00 MXN + $45.50 USD · 3 gastos") || !strings.Contains(mixed, "$45.50   1 USD") {
+		t.Errorf("mixed =\n%s", mixed)
+	}
+	if MonthSummary(2026, time.August, nil) != "2026-08: sin gastos" {
+		t.Error("empty month")
+	}
+}

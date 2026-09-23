@@ -239,7 +239,8 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		edits := pipeline.EditsFromRaw(rec.ExtractionRaw, v, "reply")
 		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
 			OccurredOn: v.OccurredOn, Merchant: v.Merchant, MerchantCanon: v.MerchantCanon, AmountMinor: v.AmountMinor,
-			Currency: v.Currency, Source: "receipt", Items: itemsToNew(v), Edits: edits,
+			Currency: v.Currency, Source: "receipt", Category: v.Category, CategorySource: v.CategorySource,
+			Items: itemsToNew(v), Edits: edits,
 		}, updateID, &rec.UpdatedAt)
 		if err != nil {
 			b.d.Log.Error("confirm failed", "err", err)
@@ -341,7 +342,8 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 	if rec.Status == "confirmed" {
 		// short, not rec.ID: the CLI-flavoured errors quote the id back
 		row, err := command.Edit(ctx, b.d.Store, short, command.EditOpts{
-			Total: f.Total, Merchant: f.Merchant, Date: f.Date, Currency: f.Currency, Source: "reply",
+			Total: f.Total, Merchant: f.Merchant, Date: f.Date, Currency: f.Currency,
+			Category: f.Category, Source: "reply",
 		}, now, b.d.Loc)
 		if err != nil {
 			sendErr(err)
@@ -357,6 +359,7 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 		}
 		v.Merchant, v.MerchantCanon = row.Merchant, row.MerchantCanon
 		v.OccurredOn, v.Currency, v.AmountMinor = row.OccurredOn, row.Currency, row.AmountMinor
+		v.Category, v.CategorySource = row.Category, row.CategorySource
 		v.Warnings = nil
 		b.edit(ctx, chat, rec.TgCardMessageID, SavedCard(short, v, true), nil)
 	} else {
@@ -429,12 +432,12 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 			b.sendKB(ctx, chat, m, closeKB)
 		}
 	case "/month":
-		year, mo, totals, count, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)
+		year, mo, totals, err := command.Month(ctx, b.d.Store, arg, now, b.d.Loc)
 		if err != nil {
 			b.send(ctx, chat, html.EscapeString(err.Error()))
 			return
 		}
-		b.sendKB(ctx, chat, MonthSummary(year, mo, totals, count), closeKB)
+		b.sendKB(ctx, chat, MonthSummary(year, mo, totals), closeKB)
 	case "/pending":
 		recs, err := command.Pending(ctx, b.d.Store)
 		if err != nil {
