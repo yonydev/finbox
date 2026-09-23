@@ -56,7 +56,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	if err := api.SetMyCommands(ctx, []telegram.BotCommand{
 		{Command: "list", Description: "últimos gastos"},
 		{Command: "month", Description: "total del mes"},
-		{Command: "pending", Description: "recibos pendientes"},
+		{Command: "pending", Description: "tickets pendientes"},
 		{Command: "help", Description: "ayuda"},
 	}); err != nil {
 		log.Error("set my commands failed", "err", err)

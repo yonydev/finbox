@@ -14,23 +14,26 @@ const (
 	NotACommand         = "mándame una foto de un ticket 🧾 (o usa /help)"
 	SomethingWrong      = "algo salió mal, revisa los logs"
 	DownloadFailed      = "no pude descargar el archivo, reintenta"
-	ReceiptNotFound     = "recibo no encontrado"
+	ReceiptNotFound     = "ticket no encontrado"
 	ReceiptStillReading = "sigo leyendo el ticket, espera la tarjeta"
-	ReceiptInactive     = "este recibo no está activo · usa 🔄 Reintentar"
+	ReceiptInactive     = "este ticket no está activo · usa 🔄 Reintentar"
 	TotalMustBePositive = "el total del ticket debe ser positivo"
-	ReplyHint           = "💡 ¿algo mal? respóndeme con el dato correcto (ej. <code>15/09</code> o <code>comercio Oxxo</code>)"
+	ReplyHint           = "💡 ¿algo mal o falta la categoría? respóndeme con el dato (ej. <code>15/09</code>, <code>comercio Oxxo</code>, <code>categoria super</code>)"
 	// OnTicket labels the raw receipt name under a card title that was normalized.
 	OnTicket = "en el ticket: %s"
-	// NoCategory / CategoryByYou fill the 🏷 line; only the human provenance
-	// exists today ("por el comercio" arrives with the rule step).
+	// CategoryLine is the 🏷 card line; NoCategory fills it when unset and
+	// names the /month bucket. No provenance suffix today: the human is the
+	// only writer. When the extractor proposes one, that case gets "· sugerida".
+	CategoryLine    = "categoría: %s"
 	NoCategory      = "sin categoría"
-	CategoryByYou   = "tú lo dijiste"
-	UnknownCategory = "categoría desconocida %q · opciones: %s"
+	UnknownCategory = "no conozco la categoría %q · elige una: %s"
 	// CorrectionHelp carries its own HTML — send it raw, never escaped.
 	CorrectionHelp = `no te entendí 🤔
-<code>15/09</code> (o <code>ayer</code>) → fecha · <code>285.00</code> → total · <code>comercio Farmacia 24</code> → comercio
+<code>15/09</code> o <code>ayer</code> → fecha
+<code>285.00</code> → total
+<code>comercio Farmacia 24</code> → comercio
 <code>categoria super</code> → categoría
-y varios de un jalón: <code>total 285 fecha 15/09</code>`
+varios de un jalón: <code>total 285 fecha 15/09</code>`
 	NoExpenses     = "sin gastos todavía"
 	NothingPending = "nada pendiente ✨"
 	HelpText       = `🧾 <b>finbox</b>
@@ -45,16 +48,17 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 📆 /month <code>mes</code>
       total del mes por categoría · <code>aug</code>, <code>ago</code> o <code>2026-01</code>
 ⏳ /pending
-      recibos pendientes o fallidos
+      tickets pendientes o fallidos
 ❓ /help
       esta ayuda
 
 <b>Tips</b>
 ─────────────
-📎 Los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
-✏️ ¿algo salió mal? responde a la tarjeta con el dato correcto (fecha, total, comercio o <code>categoria super</code>)
+📎 los tickets largos se leen mejor como <b>archivo</b>: como foto, Telegram los comprime y algunos datos pueden salir mal.
+✏️ ¿algo mal o falta la categoría? responde a la tarjeta con el dato (ej. <code>15/09</code>, <code>comercio Oxxo</code>, <code>categoria super</code>)
+🏷 categorías: super, restaurantes, hogar, servicios, transporte, salud, educacion, entretenimiento, ropa, otros
 📸 JPEG, PNG, WebP o PDF · máx. 20 MB
-🍏 Si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
+🍏 si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
 	BtnConfirm  = "✅ Confirmar"
 	BtnDiscard  = "❌ Descartar"
 	BtnRetry    = "🔄 Reintentar"
