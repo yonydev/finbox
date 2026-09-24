@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"finbox/internal/category"
 	"finbox/internal/correct"
 	"finbox/internal/extract"
 	"finbox/internal/merchant"
@@ -50,7 +51,7 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 		patch["currency"] = f.Currency
 	}
 	if f.Category != "" {
-		patch["category"] = f.Category // validate.Run derives the source
+		patch["category"], patch["category_source"] = f.Category, "human"
 	}
 	raw, _ := json.Marshal(patch)
 	prev, merged, err := d.Store.AmendExtraction(ctx, receiptID, raw)
@@ -145,6 +146,9 @@ func EditsFromRaw(raw []byte, v validate.Validated, source string) []store.Field
 	// the user renames the canon, so that is what the edit_log records
 	add("merchant", merchant.Canon(validate.ScrubMerchant(ex.Merchant)), v.MerchantCanon)
 	add("date", ex.Date, v.OccurredOn.Format("2006-01-02"))
-	add("category", ex.Category, v.Category)
+	// both sides parsed: a model "Súper" against the stored "super" is the same
+	// category, not a correction
+	rawCat, _ := category.Parse(ex.Category)
+	add("category", rawCat, v.Category)
 	return edits
 }

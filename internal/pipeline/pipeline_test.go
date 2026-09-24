@@ -41,7 +41,7 @@ func jpegBytes() []byte {
 
 func goodResult() extract.Result {
 	return extract.Result{
-		Extraction: extract.Extraction{Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00"},
+		Extraction: extract.Extraction{Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00", Category: "super"},
 		Model:      "gpt-4o-mini", RawJSON: []byte(`{"merchant":"Walmart"}`),
 	}
 }
@@ -68,6 +68,9 @@ func TestIngestHappyPath(t *testing.T) {
 	r, err := d.Store.GetReceipt(context.Background(), res.ReceiptID)
 	if err != nil || r.Status != "awaiting_confirm" || r.Model != "gpt-4o-mini" {
 		t.Fatalf("receipt %+v %v", r, err)
+	}
+	if res.Validated.Category != "super" || res.Validated.CategorySource != "llm" {
+		t.Errorf("category %q/%q, want super/llm", res.Validated.Category, res.Validated.CategorySource)
 	}
 }
 

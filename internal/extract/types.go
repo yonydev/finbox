@@ -21,13 +21,16 @@ type Extraction struct {
 	// MerchantCanon is the name to show instead of Merchant. The extractor
 	// never emits it; a reply-correction writes it (the raw stays untouched).
 	MerchantCanon string `json:"merchant_canon,omitempty"`
-	// Category is a slug from internal/category. The extractor never emits it
-	// either; a reply-correction writes it.
+	// Category is a slug from internal/category: the prompt asks for it, and a
+	// reply-correction overwrites it.
 	Category string `json:"category,omitempty"`
-	Date     string `json:"date"`     // YYYY-MM-DD
-	Currency string `json:"currency"` // ISO 4217 or "" when unreadable
-	Total    string `json:"total"`    // decimal string
-	Items    []Item `json:"items"`
+	// CategorySource is the provenance marker validate.Run trusts. The
+	// extractor never emits it; pipeline.Amend writes "human" on a correction.
+	CategorySource string `json:"category_source,omitempty"`
+	Date           string `json:"date"`     // YYYY-MM-DD
+	Currency       string `json:"currency"` // ISO 4217 or "" when unreadable
+	Total          string `json:"total"`    // decimal string
+	Items          []Item `json:"items"`
 }
 
 type Result struct {

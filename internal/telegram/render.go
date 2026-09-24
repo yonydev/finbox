@@ -35,6 +35,9 @@ func Card(shortID string, v validate.Validated, edited bool) string {
 	cat := messages.NoCategory
 	if v.Category != "" {
 		cat = category.Label(v.Category)
+		if v.CategorySource == "llm" {
+			cat += " · " + messages.CategorySuggested
+		}
 	}
 	fmt.Fprintf(&b, "🏷 "+messages.CategoryLine+"\n", html.EscapeString(cat))
 	if len(v.Items) > 0 {
@@ -64,6 +67,7 @@ func PendingCard(shortID string, v validate.Validated, edited bool) string {
 }
 
 func SavedCard(shortID string, v validate.Validated, edited bool) string {
+	v.CategorySource = "" // confirmed = yours; the DB keeps llm, that is the metric
 	return Card(shortID, v, edited) + "\n\n" + messages.Saved
 }
 

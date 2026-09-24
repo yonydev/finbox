@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	oa "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 
+	"finbox/internal/category"
 	"finbox/internal/extract"
 )
 
@@ -18,9 +20,9 @@ import (
 // tests read naturally; the canonical definition lives in internal/extract.
 var ErrNonRetryable = extract.ErrNonRetryable
 
-const systemPrompt = `Eres un extractor de tickets de compra mexicanos.
+var systemPrompt = `Eres un extractor de tickets de compra mexicanos.
 Devuelve SOLO un JSON con: merchant (string), date (YYYY-MM-DD), currency (ISO 4217, "" si no es legible),
-total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
+total (string decimal, ej. "364.00"), category (string), items (array de {name, quantity, amount}).
 - amount de cada item es el TOTAL DE LA LÍNEA como string decimal; omítelo si el precio no es legible.
 - En recibos digitales (app de entrega, tienda en línea, PDF) los cargos que se suman al total (envío, servicio, propina) van como items, para que los items sumen el total. En tickets de papel no agregues items de impuestos (IVA/IEPS), ahorros ni rebajas: ya están dentro de los precios de línea.
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
@@ -36,7 +38,11 @@ Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
 - Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
 - Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.
-- total siempre positivo: un cargo "-420.00" en la app del banco es 420.00.`
+- total siempre positivo: un cargo "-420.00" en la app del banco es 420.00.
+Categoría:
+- category: una de [` + strings.Join(category.Slugs, ", ") + `], la que mejor describe la compra completa. Decide por el tipo de comercio; en un supermercado o tienda departamental decide por los items dominantes: electrodomésticos, muebles, blancos, ferretería → hogar; despensa y comida para preparar → super.
+- restaurantes = comida preparada (restaurante, café, taquería, panadería, bar, food court). servicios = luz, agua, gas LP, internet, teléfono, limpieza del hogar, lavandería. transporte = gasolina, Uber/taxi, estacionamiento, taller, casetas. salud = farmacia, médico, laboratorio. educacion = colegiatura, cursos, útiles. entretenimiento = cine, parques, juegos, streaming. ropa = ropa y calzado. otros = nada de lo anterior.
+- Si no puedes decidir, category = "".`
 
 type Extractor struct {
 	apiKey, model, baseURL string

@@ -172,6 +172,14 @@ func TestCardCategoryLine(t *testing.T) {
 	if c := Card("a3f2c9d1", v, false); !strings.Contains(c, "🏷 categoría: educación\n") {
 		t.Errorf("labeled card missing the 🏷 line:\n%s", c)
 	}
+	// the extractor's guess is flagged on the pending card, never once confirmed
+	v.CategorySource = "llm"
+	if c := Card("a3f2c9d1", v, false); !strings.Contains(c, "🏷 categoría: educación · sugerida\n") {
+		t.Errorf("llm card missing the suffix:\n%s", c)
+	}
+	if c := SavedCard("a3f2c9d1", v, false); strings.Contains(c, "sugerida") {
+		t.Errorf("saved card still says sugerida:\n%s", c)
+	}
 }
 
 func TestMonthSummaryTable(t *testing.T) {
