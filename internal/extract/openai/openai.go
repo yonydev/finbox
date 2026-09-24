@@ -28,6 +28,10 @@ total (string decimal, ej. "364.00"), category (string), items (array de {name, 
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
 - No inventes valores: campo ilegible = "" u omitido.
+Categoría:
+- category: una de [` + strings.Join(category.Slugs, ", ") + `], la que mejor describe la compra completa. Decide por el tipo de comercio. En un supermercado o tienda departamental los items solo distinguen hogar de super: electrodomésticos, muebles, blancos, ferretería → hogar; cualquier otra compra ahí (despensa, bebé, higiene, ropa básica), también por app de entrega → super.
+- restaurantes = comida preparada (restaurante, café, taquería, panadería, bar, food court; un ticket cuyo único concepto es «Consumo» es restaurantes). servicios = luz, agua, gas LP, internet, teléfono, limpieza del hogar, lavandería. transporte = gasolina, Uber/taxi, estacionamiento, taller, refacciones, mecánico, casetas. salud = farmacia, médico, laboratorio. educacion = colegiatura, kinder, escuela, colegio, guardería, cursos, útiles. entretenimiento = cine, parques, juegos, streaming. ropa = ropa y calzado. otros = nada de lo anterior.
+- Si no puedes decidir, category = "".
 Fecha (el mensaje del usuario dice la fecha de hoy):
 - Es la fecha de la compra o del pago; no vencimiento, entrega ni vigencia.
 - Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy, o si DD/MM queda meses atrás y MM/DD cae en los últimos días respecto a hoy (impresora en formato americano).
@@ -38,11 +42,7 @@ Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
 - Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
 - Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.
-- total siempre positivo: un cargo "-420.00" en la app del banco es 420.00.
-Categoría:
-- category: una de [` + strings.Join(category.Slugs, ", ") + `], la que mejor describe la compra completa. Decide por el tipo de comercio; en un supermercado o tienda departamental decide por los items dominantes: electrodomésticos, muebles, blancos, ferretería → hogar; despensa y comida para preparar → super.
-- restaurantes = comida preparada (restaurante, café, taquería, panadería, bar, food court). servicios = luz, agua, gas LP, internet, teléfono, limpieza del hogar, lavandería. transporte = gasolina, Uber/taxi, estacionamiento, taller, casetas. salud = farmacia, médico, laboratorio. educacion = colegiatura, cursos, útiles. entretenimiento = cine, parques, juegos, streaming. ropa = ropa y calzado. otros = nada de lo anterior.
-- Si no puedes decidir, category = "".`
+- total siempre positivo: un cargo "-420.00" en la app del banco es 420.00.`
 
 type Extractor struct {
 	apiKey, model, baseURL string
