@@ -41,8 +41,9 @@ func jpegBytes() []byte {
 
 func goodResult() extract.Result {
 	return extract.Result{
-		Extraction: extract.Extraction{Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00", Category: "super"},
-		Model:      "gpt-4o-mini", RawJSON: []byte(`{"merchant":"Walmart"}`),
+		Extraction: extract.Extraction{Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00", Category: "super",
+			CategorySource: "human"}, // a hallucinated marker must not survive scrubResult
+		Model: "gpt-4o-mini", RawJSON: []byte(`{"merchant":"Walmart"}`),
 	}
 }
 
