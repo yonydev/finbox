@@ -71,7 +71,7 @@ type okExtractor struct{}
 
 func (okExtractor) Extract(context.Context, []byte, string, time.Time) (extract.Result, error) {
 	return extract.Result{Extraction: extract.Extraction{
-		Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00",
+		Merchant: "Walmart", Date: "2026-08-28", Currency: "MXN", Total: "364.00", Category: "super",
 		Items: []extract.Item{{Name: "Café", Amount: "364.00"}},
 	}, Model: "gpt-4o-mini", RawJSON: []byte(`{}`)}, nil
 }
@@ -453,5 +453,53 @@ func TestReplyRenamesMerchantBeforeConfirm(t *testing.T) {
 	got := st.EditLogForTest(t, rows[0].ID)
 	if len(got) != 1 || got[0] != "merchant Walmart>Soriana reply" {
 		t.Fatalf("edit_log = %q", got)
+	}
+}
+
+// confirmUpdate presses the card's ✅ button.
+func confirmUpdate(updateID int64, rec store.Receipt) Update {
+	return Update{UpdateID: updateID, CallbackQuery: &CallbackQuery{
+		ID: fmt.Sprintf("cb%d", updateID), From: &User{ID: 111}, Data: "c|" + rec.ID,
+		Message: &Message{MessageID: rec.TgCardMessageID, Chat: Chat{ID: 111}},
+	}}
+}
+
+// The whole provenance wiring end to end: the extractor's own category is
+// stamped llm and logs nothing, a reply overwrites it as human and logs the
+// correction. Fails if Amend drops the marker or Run ignores it.
+func TestCategoryProvenanceThroughConfirm(t *testing.T) {
+	b, _, st := newBot(t, okExtractor{})
+	rec := cardOf(t, b, st, 70)
+	b.HandleUpdate(context.Background(), replyUpdate(71, 111, rec.TgCardMessageID, "285.50"))
+	b.HandleUpdate(context.Background(), confirmUpdate(72, rec))
+
+	rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows) != 1 || rows[0].Category != "super" || rows[0].CategorySource != "llm" {
+		t.Fatalf("rows = %+v", rows)
+	}
+	for _, e := range st.EditLogForTest(t, rows[0].ID) {
+		if strings.HasPrefix(e, "category ") {
+			t.Errorf("phantom category edit: %q", e)
+		}
+	}
+
+	b2, api2, st2 := newBot(t, okExtractor{})
+	rec2 := cardOf(t, b2, st2, 73)
+	b2.HandleUpdate(context.Background(), replyUpdate(74, 111, rec2.TgCardMessageID, "categoria hogar"))
+	pending := callsOf(api2, 0, "edit")
+	card := pending[len(pending)-1]
+	if !strings.Contains(card.text, "categoría: hogar") || strings.Contains(card.text, "sugerida") {
+		t.Fatalf("corrected pending card = %s", card.text)
+	}
+	b2.HandleUpdate(context.Background(), confirmUpdate(75, rec2))
+	rows2, _ := st2.ListTransactions(context.Background(), 10, 0, 0, time.UTC)
+	if len(rows2) != 1 || rows2[0].Category != "hogar" || rows2[0].CategorySource != "human" {
+		t.Fatalf("rows2 = %+v", rows2)
+	}
+	if got := st2.EditLogForTest(t, rows2[0].ID); len(got) != 1 || got[0] != "category super>hogar reply" {
+		t.Fatalf("edit_log = %q", got)
+	}
+	if last := api2.last(); !strings.Contains(last.text, "Guardado") || strings.Contains(last.text, "sugerida") {
+		t.Errorf("saved card = %s", last.text)
 	}
 }

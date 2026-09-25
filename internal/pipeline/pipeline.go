@@ -216,6 +216,7 @@ func failReason(err error) string {
 }
 
 func scrubResult(r extract.Result) extract.Result {
+	r.Extraction.CategorySource = "" // only a correction may claim provenance, never the model
 	r.Extraction.Merchant = validate.Scrub(r.Extraction.Merchant)
 	for i := range r.Extraction.Items {
 		r.Extraction.Items[i].Name = validate.Scrub(r.Extraction.Items[i].Name)

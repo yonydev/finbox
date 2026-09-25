@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	oa "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 
+	"finbox/internal/category"
 	"finbox/internal/extract"
 )
 
@@ -18,14 +20,18 @@ import (
 // tests read naturally; the canonical definition lives in internal/extract.
 var ErrNonRetryable = extract.ErrNonRetryable
 
-const systemPrompt = `Eres un extractor de tickets de compra mexicanos.
+var systemPrompt = `Eres un extractor de tickets de compra mexicanos.
 Devuelve SOLO un JSON con: merchant (string), date (YYYY-MM-DD), currency (ISO 4217, "" si no es legible),
-total (string decimal, ej. "364.00"), items (array de {name, quantity, amount}).
+total (string decimal, ej. "364.00"), category (string), items (array de {name, quantity, amount}).
 - amount de cada item es el TOTAL DE LA LÍNEA como string decimal; omítelo si el precio no es legible.
 - En recibos digitales (app de entrega, tienda en línea, PDF) los cargos que se suman al total (envío, servicio, propina) van como items, para que los items sumen el total. En tickets de papel no agregues items de impuestos (IVA/IEPS), ahorros ni rebajas: ya están dentro de los precios de línea.
 - Si la imagen es un screenshot de un cargo bancario sin items, devuelve items: [].
 - NUNCA transcribas números de tarjeta, cuenta o CLABE.
 - No inventes valores: campo ilegible = "" u omitido.
+Categoría:
+- category: una de [` + strings.Join(category.Slugs, ", ") + `], la que mejor describe la compra completa. Decide por el tipo de comercio. En un supermercado o tienda departamental los items solo distinguen hogar de super: electrodomésticos, muebles, blancos, ferretería → hogar; cualquier otra compra ahí (despensa, bebé, higiene, ropa básica), también por app de entrega → super.
+- restaurantes = comida preparada (restaurante, café, taquería, panadería, bar, food court; un ticket cuyo único concepto es «Consumo» es restaurantes). servicios = luz, agua, gas LP, internet, teléfono, limpieza del hogar, lavandería. transporte = gasolina, Uber/taxi, estacionamiento, taller, refacciones, mecánico, casetas. salud = farmacia, médico, laboratorio. educacion = colegiatura, kinder, escuela, colegio, guardería, cursos, útiles. entretenimiento = cine, parques, juegos, streaming. ropa = ropa y calzado. otros = nada de lo anterior.
+- Si no puedes decidir, category = "".
 Fecha (el mensaje del usuario dice la fecha de hoy):
 - Es la fecha de la compra o del pago; no vencimiento, entrega ni vigencia.
 - Las fechas van en DD/MM/AA o DD/MM/AAAA salvo que el ticket indique otro formato. Léela como MM/DD si DD/MM es imposible o posterior a hoy, o si DD/MM queda meses atrás y MM/DD cae en los últimos días respecto a hoy (impresora en formato americano).

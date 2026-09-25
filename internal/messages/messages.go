@@ -22,11 +22,12 @@ const (
 	// OnTicket labels the raw receipt name under a card title that was normalized.
 	OnTicket = "en el ticket: %s"
 	// CategoryLine is the 🏷 card line; NoCategory fills it when unset and
-	// names the /month bucket. No provenance suffix today: the human is the
-	// only writer. When the extractor proposes one, that case gets "· sugerida".
-	CategoryLine    = "categoría: %s"
-	NoCategory      = "sin categoría"
-	UnknownCategory = "no conozco la categoría %q · elige una: %s"
+	// names the /month bucket.
+	CategoryLine = "categoría: %s"
+	NoCategory   = "sin categoría"
+	// CategorySuggested marks a category the extractor proposed, not the human.
+	CategorySuggested = "sugerida"
+	UnknownCategory   = "no conozco la categoría %q · elige una: %s"
 	// CorrectionHelp carries its own HTML — send it raw, never escaped.
 	CorrectionHelp = `no te entendí 🤔
 <code>15/09</code> o <code>ayer</code> → fecha

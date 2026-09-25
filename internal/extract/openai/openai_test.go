@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"finbox/internal/category"
 )
 
 var lastReq []byte // body of the most recent request the fake server saw
@@ -85,5 +87,19 @@ func TestExtractPDFSendsFilePart(t *testing.T) {
 	}
 	if strings.Contains(body, "image_url") {
 		t.Errorf("PDF must not be sent as an image part: %.400s", body)
+	}
+}
+
+// The schema line and the slug list are what make the model emit a category at
+// all: without either, the field comes back empty on every receipt.
+func TestSystemPromptCarriesCategory(t *testing.T) {
+	schema, _, _ := strings.Cut(systemPrompt, "\n- amount")
+	if !strings.Contains(schema, "category (string)") {
+		t.Errorf("schema line lacks the category key:\n%s", schema)
+	}
+	for _, s := range category.Slugs {
+		if !strings.Contains(systemPrompt, s) {
+			t.Errorf("prompt never names the slug %q", s)
+		}
 	}
 }

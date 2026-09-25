@@ -105,11 +105,13 @@ func Run(ex extract.Extraction, now time.Time, loc *time.Location) (Validated, e
 	if c := ScrubMerchant(ex.MerchantCanon); c != "" { // a correction outranks the normalizer
 		v.MerchantCanon = c
 	}
-	// ponytail: any category in the jsonb is the human's — the extractor emits
-	// none; step 1 must diff against extraction_raw (pass it in) before the
-	// prompt gains the field, or every LLM value gets stamped human
 	if slug, ok := category.Parse(ex.Category); ok {
-		v.Category, v.CategorySource = slug, "human"
+		// the prompt suggests the category, so llm is the default; only the
+		// marker a correction writes into the jsonb can claim it for a human/rule
+		v.Category, v.CategorySource = slug, "llm"
+		if ex.CategorySource == "human" || ex.CategorySource == "rule" {
+			v.CategorySource = ex.CategorySource
+		}
 	}
 	v.Currency = strings.ToUpper(strings.TrimSpace(ex.Currency))
 	if v.Currency == "" {

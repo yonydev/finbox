@@ -5,6 +5,7 @@
 # Blobs (never committed, testdata/real/ is gitignored):  rclone copy r2crypt:receipts testdata/real
 # Run:  scripts/extract-corpus.sh                     # model from FINBOX_OPENAI_MODEL, default gpt-4.1-mini
 #       FINBOX_OPENAI_MODEL=gpt-4o scripts/extract-corpus.sh
+# Output dir: out/<model>, or OUT=<dir> (relative to the repo root — the script cds there).
 # Resumable: an existing out/<model>/<sha>.json is skipped; failures are listed and do not stop the loop,
 # rerun to pick them up. Same model but a new prompt: `mv out/<model> out/<model>-before` first.
 # OpenAI's 200k tokens/min tier is ~20 photos/min and the extractor treats 429 as non-retryable: paced.
@@ -15,7 +16,7 @@ cd "$(dirname "$0")/.."
 [ -n "$OPENAI_API_KEY" ] || { echo "falta OPENAI_API_KEY (entorno o .env)" >&2; exit 1; }
 export OPENAI_API_KEY
 model=${FINBOX_OPENAI_MODEL:-gpt-4.1-mini}
-out=out/$model
+out=${OUT:-out/$model}
 mkdir -p "$out"
 go build -o "$out/.finbox" ./cmd/finbox
 fail=0

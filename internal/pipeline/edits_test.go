@@ -87,3 +87,18 @@ func TestEditsFromRawMerchantDiffsCanon(t *testing.T) {
 		t.Errorf("normalizer counted as an edit: %+v", got)
 	}
 }
+
+// The diff is slug-vs-slug: a model "Súper" against the stored "super" is the
+// same category, not a correction the edit_log should carry.
+func TestEditsFromRawCategoryDiffsParsed(t *testing.T) {
+	v := final()
+	v.Category = "super"
+	if got := edits(t, `{"category":"Súper"}`, v); len(got) != 0 {
+		t.Errorf("accents counted as an edit: %+v", got)
+	}
+	v.Category = "hogar"
+	got := edits(t, `{"category":"super"}`, v)
+	if len(got) != 1 || got["category"] != [2]string{"super", "hogar"} {
+		t.Errorf("category = %+v", got)
+	}
+}

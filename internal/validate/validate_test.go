@@ -179,15 +179,18 @@ func TestRunCanon(t *testing.T) {
 }
 
 func TestRunCategoryProvenance(t *testing.T) {
-	ex := base()
-	ex.Category = "Súper"
-	v, err := Run(ex, now, time.UTC)
-	if err != nil || v.Category != "super" || v.CategorySource != "human" {
-		t.Fatalf("v = %+v err = %v", v, err)
-	}
-	ex.Category = "comida" // off-list: dropped, never stamped
-	v, err = Run(ex, now, time.UTC)
-	if err != nil || v.Category != "" || v.CategorySource != "" {
-		t.Fatalf("off-list kept: %+v %v", v, err)
+	for _, c := range []struct{ cat, marker, wantCat, wantSrc string }{
+		{"Súper", "", "super", "llm"},        // the prompt's own suggestion
+		{"super", "human", "super", "human"}, // marker written by a correction
+		{"super", "rule", "super", "rule"},
+		{"super", "HUMAN", "super", "llm"}, // junk marker: only the exact words count
+		{"comida", "human", "", ""},        // off-list: dropped, never stamped
+	} {
+		ex := base()
+		ex.Category, ex.CategorySource = c.cat, c.marker
+		v, err := Run(ex, now, time.UTC)
+		if err != nil || v.Category != c.wantCat || v.CategorySource != c.wantSrc {
+			t.Errorf("%q/%q → %q/%q (err %v)", c.cat, c.marker, v.Category, v.CategorySource, err)
+		}
 	}
 }
