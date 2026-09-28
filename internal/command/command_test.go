@@ -186,6 +186,13 @@ func TestEditCategory(t *testing.T) {
 	if log := s.EditLogForTest(t, txnID); len(log) != 1 || log[0] != "category >super cli" {
 		t.Fatalf("edit_log = %v", log)
 	}
+	// the same edit again changes nothing and must not log a phantom correction
+	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Category: "super"}, time.Now(), time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	if log := s.EditLogForTest(t, txnID); len(log) != 1 {
+		t.Fatalf("no-op edit logged: %v", log)
+	}
 	if _, err := Edit(context.Background(), s, txnID[:8], EditOpts{Category: "comida"}, time.Now(), time.UTC); err == nil {
 		t.Error("unknown slug must be rejected")
 	}
