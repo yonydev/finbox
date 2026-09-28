@@ -10,6 +10,7 @@ import (
 
 	"finbox/internal/category"
 	"finbox/internal/daytok"
+	"finbox/internal/merchant"
 	"finbox/internal/messages"
 	"finbox/internal/money"
 	"finbox/internal/monthtok"
@@ -46,10 +47,11 @@ func Pending(ctx context.Context, st *store.Store) ([]store.Receipt, error) {
 	return st.PendingReceipts(ctx)
 }
 
-type AddOpts struct{ Total, Merchant, Date, Currency string }
+type AddOpts struct{ Total, Merchant, Date, Currency, Category string }
 
 // Add records a manual expense — no receipt behind it. Negative totals are
 // refunds/credits; zero is rejected (so is any missing required field).
+// A category given here is the human's own: source 'human'.
 func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *time.Location) (store.TxnRow, error) {
 	if strings.TrimSpace(o.Merchant) == "" {
 		return store.TxnRow{}, fmt.Errorf("falta el comercio (--merchant)")
@@ -72,8 +74,18 @@ func Add(ctx context.Context, st *store.Store, o AddOpts, now time.Time, loc *ti
 	if err != nil {
 		return store.TxnRow{}, err
 	}
+	var slug, source string
+	if o.Category != "" {
+		ok := false
+		if slug, ok = category.Parse(o.Category); !ok {
+			return store.TxnRow{}, fmt.Errorf(messages.UnknownCategory, o.Category, strings.Join(category.Slugs, ", "))
+		}
+		source = "human"
+	}
+	name := validate.Scrub(strings.TrimSpace(o.Merchant))
 	return st.AddTransaction(ctx, store.NewTransaction{
-		OccurredOn: day, Merchant: validate.Scrub(strings.TrimSpace(o.Merchant)),
+		OccurredOn: day, Merchant: name, MerchantCanon: merchant.Canon(name),
+		Category: slug, CategorySource: source,
 		AmountMinor: minor, Currency: currency, Source: "manual",
 	})
 }

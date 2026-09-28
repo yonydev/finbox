@@ -203,7 +203,7 @@ func TestReplyToNonCardFallsThroughToRouter(t *testing.T) {
 	rec := cardOf(t, b, st, 60)
 	n := len(api.calls)
 	b.HandleUpdate(context.Background(), replyUpdate(61, 111, 9999, "15/09")) // not a card
-	if !strings.Contains(api.last().text, "mándame una foto") {
+	if !strings.Contains(api.last().text, "mándame la foto") {
 		t.Fatalf("last = %+v", api.last())
 	}
 	if len(callsOf(api, n, "delete")) != 0 {
@@ -501,5 +501,141 @@ func TestCategoryProvenanceThroughConfirm(t *testing.T) {
 	}
 	if last := api2.last(); !strings.Contains(last.text, "Guardado") || strings.Contains(last.text, "sugerida") {
 		t.Errorf("saved card = %s", last.text)
+	}
+}
+
+func textUpdate(updateID int64, text string) Update {
+	return Update{UpdateID: updateID, Message: &Message{
+		MessageID: updateID * 10, From: &User{ID: 111}, Chat: Chat{ID: 111}, Text: text,
+	}}
+}
+
+func cbUpdate(updateID int64, data string, cardMsgID int64) Update {
+	return Update{UpdateID: updateID, CallbackQuery: &CallbackQuery{
+		ID: fmt.Sprintf("cb%d", updateID), From: &User{ID: 111}, Data: data,
+		Message: &Message{MessageID: cardMsgID, Chat: Chat{ID: 111}},
+	}}
+}
+
+func TestAddSavesAndUndoes(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	ctx := context.Background()
+	b.HandleUpdate(ctx, textUpdate(80, "/add 500 Limpieza Paty categoria servicios"))
+
+	card := api.last()
+	for _, want := range []string{"Guardado", "Limpieza Paty", "servicios", "Deshacer"} {
+		if !strings.Contains(card.text, want) {
+			t.Errorf("saved card missing %q:\n%s", want, card.text)
+		}
+	}
+	if strings.Contains(card.text, "en el ticket") {
+		t.Errorf("manual row must not show the raw-name line:\n%s", card.text)
+	}
+	if card.kb == nil || len(*card.kb) != 1 || len((*card.kb)[0]) != 1 ||
+		!strings.HasPrefix((*card.kb)[0][0].CallbackData, "v|") {
+		t.Fatalf("undo button = %+v", card.kb)
+	}
+	rows, _ := st.ListTransactions(ctx, 10, 0, 0, time.UTC)
+	if len(rows) != 1 || rows[0].Source != "manual" || rows[0].AmountMinor != 50000 ||
+		rows[0].Category != "servicios" || rows[0].CategorySource != "human" {
+		t.Fatalf("rows = %+v", rows)
+	}
+
+	undo := cbUpdate(81, (*card.kb)[0][0].CallbackData, card.msgID)
+	b.HandleUpdate(ctx, undo)
+	if rows, _ = st.ListTransactions(ctx, 10, 0, 0, time.UTC); len(rows) != 0 {
+		t.Fatalf("undo left the row: %+v", rows)
+	}
+	last := api.last()
+	if last.method != "edit" || last.msgID != card.msgID || !strings.Contains(last.text, "Deshecho") {
+		t.Fatalf("undone card = %+v", last)
+	}
+	// replay the same update: dedup makes it a no-op
+	n := len(api.calls)
+	b.HandleUpdate(ctx, undo)
+	if len(api.calls) != n {
+		t.Fatalf("replayed update produced calls: %+v", api.calls[n:])
+	}
+	// second tap, new update id
+	b.HandleUpdate(ctx, cbUpdate(82, undo.CallbackQuery.Data, card.msgID))
+	if !strings.Contains(api.last().text, "ya estaba deshecho") {
+		t.Fatalf("second tap = %+v", api.last())
+	}
+}
+
+func TestAddTeaches(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	cases := []struct {
+		text, want string
+		help       bool
+	}{
+		{"/add", "registra un gasto sin ticket", true},
+		{"/add Limpieza Paty", "falta el monto", true},
+		{"/add 500", "falta el comercio", true},
+		{"/add 24 Farmacia 24", "dos números", true},
+		{"/add 500 pague la limpieza de la casa", "no te entendí", true},
+		{"/add 500 Uber categoria comida", "no conozco la categoría", false},
+	}
+	for i, tc := range cases {
+		b.HandleUpdate(context.Background(), textUpdate(int64(90+i), tc.text))
+		got := api.last().text
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%q → %q, want %q", tc.text, got, tc.want)
+		}
+		if hasHelp := strings.Contains(got, "el monto va primero"); hasHelp != tc.help {
+			t.Errorf("%q: help = %v, want %v:\n%s", tc.text, hasHelp, tc.help, got)
+		}
+	}
+	if rows, _ := st.ListTransactions(context.Background(), 10, 0, 0, time.UTC); len(rows) != 0 {
+		t.Fatalf("a rejected /add saved something: %+v", rows)
+	}
+}
+
+func TestAddWarnsAboutNearbyDuplicate(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	ctx := context.Background()
+	if _, err := st.AddTransaction(ctx, store.NewTransaction{
+		OccurredOn: time.Now().In(time.UTC).AddDate(0, 0, -2), Merchant: "ADSUGAS",
+		AmountMinor: 45200, Currency: "MXN", Source: "manual"}); err != nil {
+		t.Fatal(err)
+	}
+	b.HandleUpdate(ctx, textUpdate(95, "/add 452 ADSUGAS"))
+	last := api.last()
+	if !strings.Contains(last.text, "posible duplicado") || !strings.Contains(last.text, "$452.00") {
+		t.Fatalf("no duplicate hint:\n%s", last.text)
+	}
+	if rows, _ := st.ListTransactions(ctx, 10, 0, 0, time.UTC); len(rows) != 2 {
+		t.Fatalf("the hint must not block the insert: %+v", rows)
+	}
+}
+
+func TestReplyCorrectsManualCard(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	ctx := context.Background()
+	b.HandleUpdate(ctx, textUpdate(96, "/add 500 Limpieza Paty"))
+	card := api.last()
+	rows, _ := st.ListTransactions(ctx, 10, 0, 0, time.UTC)
+
+	u := replyUpdate(97, 111, card.msgID, "categoria otros")
+	u.Message.ReplyTo.Text = "🧾 " + rows[0].ShortID + " · Limpieza Paty" // Telegram delivers the card as plain text
+	b.HandleUpdate(ctx, u)
+
+	rows, _ = st.ListTransactions(ctx, 10, 0, 0, time.UTC)
+	if len(rows) != 1 || rows[0].Category != "otros" || rows[0].CategorySource != "human" || !rows[0].Edited {
+		t.Fatalf("rows = %+v", rows)
+	}
+	edits := callsOf(api, 0, "edit")
+	if len(edits) == 0 {
+		t.Fatal("card not re-rendered")
+	}
+	recard := edits[len(edits)-1]
+	if recard.msgID != card.msgID || recard.kb == nil ||
+		!strings.HasPrefix((*recard.kb)[0][0].CallbackData, "v|") {
+		t.Fatalf("undo button lost on re-render: %+v", recard)
+	}
+	for _, want := range []string{"otros", "✏️", "Guardado", "Deshacer"} {
+		if !strings.Contains(recard.text, want) {
+			t.Errorf("re-rendered card missing %q:\n%s", want, recard.text)
+		}
 	}
 }

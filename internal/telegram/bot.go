@@ -1,19 +1,23 @@
 package telegram
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"finbox/internal/command"
 	"finbox/internal/correct"
+	"finbox/internal/daytok"
 	"finbox/internal/extract"
 	"finbox/internal/messages"
+	"finbox/internal/money"
 	"finbox/internal/pipeline"
 	"finbox/internal/store"
 	"finbox/internal/validate"
@@ -223,6 +227,28 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		}
 		return true
 	}
+	if action == "v" { // undo a manual expense: a transaction id, not a receipt
+		row, err := b.d.Store.GetTransactionByID(ctx, receiptID)
+		if err == nil {
+			var ok bool
+			if ok, err = b.d.Store.VoidTransaction(ctx, row.ID); err == nil && !ok {
+				err = store.ErrNotFound
+			}
+		}
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			b.send(ctx, chat, messages.AlreadyUndone)
+		case err != nil:
+			b.d.Log.Error("undo failed", "txn", receiptID, "err", err)
+			b.send(ctx, chat, messages.SomethingWrong)
+		default:
+			card := UndoneCard(row)
+			if err := b.api.EditMessageText(ctx, chat, msgID, card, nil); err != nil {
+				b.send(ctx, chat, card) // past the 48h edit window
+			}
+		}
+		return true
+	}
 	rec, err := b.d.Store.GetReceipt(ctx, receiptID)
 	if err != nil {
 		b.edit(ctx, chat, msgID, messages.ReceiptNotFound, nil)
@@ -309,21 +335,34 @@ func (b *Bot) validatedFromStored(rec store.Receipt) (validate.Validated, error)
 	return validate.Run(ex, time.Now(), b.d.Loc)
 }
 
+// manualCardID pulls the short id out of a manual card's first line
+// ("🧾 ab12cd34 · Limpieza Paty …"): a receipt-less row has no
+// tg_card_message_id, so the card text is the only key there is.
+var manualCardID = regexp.MustCompile(`^\S+ ([0-9a-f]{8}) `)
+
 // handleReply treats a reply to a receipt card as a correction. Returns false
 // when the replied-to message is not a card, so the text falls through to the
 // normal router.
 func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 	chat := m.Chat.ID
 	rec, err := b.d.Store.GetReceiptByCard(ctx, chat, m.ReplyTo.MessageID)
+	manual := "" // manual rows carry no card row: the id comes from the card text
 	if err != nil {
-		return false
+		mm := manualCardID.FindStringSubmatch(m.ReplyTo.Text)
+		if mm == nil {
+			return false
+		}
+		manual = mm[1]
 	}
-	short := shortID(rec.ID)
+	short := manual
 	currency := "" // confirmed: command.Edit re-parses the total against the txn currency
-	if rec.Status != "confirmed" {
-		var ex extract.Extraction
-		if err := json.Unmarshal(rec.Extraction, &ex); err == nil {
-			currency = ex.Currency
+	if manual == "" {
+		short = shortID(rec.ID)
+		if rec.Status != "confirmed" {
+			var ex extract.Extraction
+			if err := json.Unmarshal(rec.Extraction, &ex); err == nil {
+				currency = ex.Currency
+			}
 		}
 	}
 	sendErr := func(err error) {
@@ -339,7 +378,7 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 		}
 		return true
 	}
-	if rec.Status == "confirmed" {
+	if manual != "" || rec.Status == "confirmed" {
 		// short, not rec.ID: the CLI-flavoured errors quote the id back
 		row, err := command.Edit(ctx, b.d.Store, short, command.EditOpts{
 			Total: f.Total, Merchant: f.Merchant, Date: f.Date, Currency: f.Currency,
@@ -349,19 +388,24 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 			sendErr(err)
 			return true
 		}
-		// ponytail: the saved card is re-rendered from the receipt's extraction
-		// with the transaction pasted over it — a receipt-less transaction, or an
-		// extraction that no longer validates, loses its items until
-		// store.GetTransactionItems exists
-		v, verr := b.validatedFromStored(rec)
-		if verr != nil {
-			b.d.Log.Warn("re-render sin items", "receipt", rec.ID, "err", verr)
+		if manual != "" { // a manual card re-renders from the row; ↩️ Deshacer stays
+			b.edit(ctx, chat, m.ReplyTo.MessageID,
+				SavedCard(short, manualValidated(row), true)+"\n\n"+messages.AddSavedHint, undoKB(row.ID))
+		} else {
+			// ponytail: the saved card is re-rendered from the receipt's extraction
+			// with the transaction pasted over it — a receipt-less transaction, or an
+			// extraction that no longer validates, loses its items until
+			// store.GetTransactionItems exists
+			v, verr := b.validatedFromStored(rec)
+			if verr != nil {
+				b.d.Log.Warn("re-render sin items", "receipt", rec.ID, "err", verr)
+			}
+			v.Merchant, v.MerchantCanon = row.Merchant, row.MerchantCanon
+			v.OccurredOn, v.Currency, v.AmountMinor = row.OccurredOn, row.Currency, row.AmountMinor
+			v.Category, v.CategorySource = row.Category, row.CategorySource
+			v.Warnings = nil
+			b.edit(ctx, chat, rec.TgCardMessageID, SavedCard(short, v, true), nil)
 		}
-		v.Merchant, v.MerchantCanon = row.Merchant, row.MerchantCanon
-		v.OccurredOn, v.Currency, v.AmountMinor = row.OccurredOn, row.Currency, row.AmountMinor
-		v.Category, v.CategorySource = row.Category, row.CategorySource
-		v.Warnings = nil
-		b.edit(ctx, chat, rec.TgCardMessageID, SavedCard(short, v, true), nil)
 	} else {
 		res, err := pipeline.Amend(ctx, b.d, rec.ID, f, now)
 		if err != nil {
@@ -404,6 +448,9 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 	switch cmd {
 	case "/start", "/help":
 		b.send(ctx, chat, messages.HelpText)
+	case "/add":
+		// the whole line, not fields[1]: the merchant is several words
+		b.handleAdd(ctx, chat, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(m.Text), fields[0])), now)
 	case "/list":
 		limit := 10
 		capped := false
@@ -462,6 +509,61 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 	default:
 		b.send(ctx, chat, messages.NotACommand)
 	}
+}
+
+// handleAdd registers a manual expense and answers with a saved card carrying
+// one ↩️ Deshacer button. Saved immediately: no draft, no confirm step.
+// ponytail: the insert and CompleteUpdate are two statements, so a redelivery
+// in that ms window duplicates the row — the duplicate hint shows it and
+// Deshacer is one tap away.
+func (b *Bot) handleAdd(ctx context.Context, chat int64, text string, now time.Time) {
+	if text == "" {
+		b.send(ctx, chat, messages.AddHelp)
+		return
+	}
+	f, err := correct.ParseAdd(text, now.In(b.d.Loc))
+	if err != nil {
+		var header string
+		switch {
+		case errors.Is(err, correct.ErrNoAmount):
+			header = messages.AddNoAmount
+		case errors.Is(err, correct.ErrNoMerchant):
+			header = messages.AddNoMerchant
+		case errors.Is(err, correct.ErrTwoNumbers):
+			header = messages.AddTwoNumbers
+		case errors.Is(err, correct.ErrUnparseable):
+			header = messages.AddUnparsed
+		default: // unknown category, impossible date, unsupported currency: their own words
+			b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
+			return
+		}
+		b.send(ctx, chat, header+"\n\n"+messages.AddHelp)
+		return
+	}
+	// before the insert, or it would find itself; ParseAdd already validated both
+	day, _ := daytok.Parse(f.Date, now.In(b.d.Loc))
+	minor, _ := money.ParseMinor(f.Total, cmp.Or(f.Currency, "MXN"))
+	dup, hit, err := b.d.Store.FindDuplicate(ctx, day, minor, 3)
+	if err != nil {
+		b.d.Log.Warn("duplicate check failed", "err", err) // a missing hint is not a reason to drop the expense
+	}
+	row, err := command.Add(ctx, b.d.Store, command.AddOpts{
+		Total: f.Total, Merchant: f.Merchant, Date: f.Date, Currency: f.Currency, Category: f.Category,
+	}, now, b.d.Loc)
+	if err != nil {
+		b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
+		return
+	}
+	v := manualValidated(row)
+	if hit {
+		v.Warnings = append(v.Warnings, fmt.Sprintf(messages.DuplicateWarning, dup.MerchantCanon,
+			dup.OccurredOn.Format("02/01"), money.Format(dup.AmountMinor, dup.Currency)))
+	}
+	b.sendKB(ctx, chat, SavedCard(row.ShortID, v, false)+"\n\n"+messages.AddSavedHint, undoKB(row.ID))
+}
+
+func undoKB(txnID string) *InlineKeyboard {
+	return &InlineKeyboard{{{Text: messages.BtnUndo, CallbackData: "v|" + txnID}}}
 }
 
 // send is the fire-and-forget counterpart of edit: reply failures are logged,
