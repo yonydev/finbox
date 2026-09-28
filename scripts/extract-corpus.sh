@@ -9,6 +9,7 @@
 # Resumable: an existing out/<model>/<sha>.json is skipped; failures are listed and do not stop the loop,
 # rerun to pick them up. Same model but a new prompt: `mv out/<model> out/<model>-before` first.
 # OpenAI's 200k tokens/min tier is ~20 photos/min and the extractor treats 429 as non-retryable: paced.
+# Wall time per receipt goes to out/<model>/latency.tsv (sha milliseconds); the summary prints the p50.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -d testdata/real ] || { echo "falta testdata/real/ — rclone copy r2crypt:receipts testdata/real" >&2; exit 1; }
@@ -23,12 +24,15 @@ fail=0
 while read -r f; do
   sha=$(basename "$f"); sha=${sha%.*}
   [ -s "$out/$sha.json" ] && continue
+  t0=$(date +%s%N)
   if FINBOX_OPENAI_MODEL=$model "$out/.finbox" extract "$f" --json --today "$(date -r "$f" +%F)" > "$out/$sha.json.tmp"; then
     mv "$out/$sha.json.tmp" "$out/$sha.json"   # tmp+mv: a failed call never leaves a half JSON that resume would skip
+    echo "$sha $(( ($(date +%s%N) - t0) / 1000000 ))" >> "$out/latency.tsv"   # ms
   else
     echo "FAIL $f" >&2; rm -f "$out/$sha.json.tmp"; fail=$((fail+1))
   fi
-  sleep 5
+  sleep 2
 done < <(find testdata/real -type f | sort)
-echo "$(find "$out" -name '*.json' | wc -l) JSON en $out, $fail fallos"
+p50=$(sort -k2 -n "$out/latency.tsv" 2>/dev/null | awk '{a[NR]=$2} END{if(NR) print a[int((NR+1)/2)]}')
+echo "$(find "$out" -name '*.json' | wc -l) JSON en $out, $fail fallos, p50 ${p50:-?} ms"
 [ "$fail" -eq 0 ]
