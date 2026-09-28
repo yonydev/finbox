@@ -171,7 +171,7 @@ func runExtraction(ctx context.Context, d Deps, rec store.Receipt, image []byte,
 		res.Outcome, res.FailReason = OutcomeFailed, reason
 		return res, nil
 	}
-	if dup, err := d.Store.HasDuplicate(ctx, v.OccurredOn, v.AmountMinor); err == nil && dup {
+	if _, dup, err := d.Store.FindDuplicate(ctx, v.OccurredOn, v.AmountMinor, 0); err == nil && dup {
 		v.Warnings = append(v.Warnings, "⚠️ posible duplicado: ya hay un gasto con esa fecha y monto")
 	}
 	ok, err := d.Store.Transition(ctx, rec.ID, fromStatus, "awaiting_confirm", "")

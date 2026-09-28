@@ -54,6 +54,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	bot := telegram.NewBot(api, d, cfg.AllowedUserIDs)
 
 	if err := api.SetMyCommands(ctx, []telegram.BotCommand{
+		{Command: "add", Description: "registra gasto sin ticket"},
 		{Command: "list", Description: "últimos gastos"},
 		{Command: "month", Description: "total del mes"},
 		{Command: "pending", Description: "tickets pendientes"},

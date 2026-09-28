@@ -152,3 +152,38 @@ func normalize(raw map[string]string, now time.Time, currency string) (Fields, e
 	f.Merchant = raw["merchant"]
 	return f, nil
 }
+
+// ErrNoAmount, ErrNoMerchant and ErrTwoNumbers are the /add grammar failures;
+// the bot maps each to its own teaching header. Anything else is
+// ErrUnparseable or a specific error from category/daytok/money.
+var (
+	ErrNoAmount   = errors.New("falta el monto")
+	ErrNoMerchant = errors.New("falta el comercio")
+	ErrTwoNumbers = errors.New("dos números")
+)
+
+// ParseAdd parses a `/add` line: the amount FIRST (the only bare number),
+// then the merchant and the keywords in any order. No second grammar — the
+// amount moves behind a `total` keyword and Parse does the rest.
+func ParseAdd(text string, now time.Time) (Fields, error) {
+	toks := strings.Fields(strings.ReplaceAll(text, "$ ", "$"))
+	if len(toks) == 0 || !numberTok.MatchString(toks[0]) {
+		return Fields{}, ErrNoAmount
+	}
+	for _, t := range toks[1:] { // a second bare number is the "Farmacia 24" case
+		if keywords[strings.ToLower(t)] != "" {
+			break
+		}
+		if numberTok.MatchString(t) {
+			return Fields{}, ErrTwoNumbers
+		}
+	}
+	f, err := Parse(strings.Join(toks[1:], " ")+" total "+toks[0], now, "")
+	if err != nil {
+		return Fields{}, err
+	}
+	if f.Merchant == "" {
+		return Fields{}, ErrNoMerchant
+	}
+	return f, nil
+}

@@ -183,8 +183,9 @@ func cmdAdd(argv []string, stdout, stderr io.Writer) int {
 	merchant := fsx.String("merchant", "", "comercio")
 	date := fsx.String("date", "", "fecha YYYY-MM-DD, DD/MM o ayer (default hoy)")
 	currency := fsx.String("currency", "", "moneda ISO 4217, ej. MXN (default MXN)")
+	cat := fsx.String("category", "", "categoría, ej. super")
 	asJSON := fsx.Bool("json", false, "salida JSON")
-	const usage = "uso: finbox add --total N --merchant S [--date D] [--currency C] [--json]"
+	const usage = "uso: finbox add --total N --merchant S [--date D] [--currency C] [--category S] [--json]"
 	setUsage(fsx, usage)
 	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
 		return code
@@ -195,7 +196,7 @@ func cmdAdd(argv []string, stdout, stderr io.Writer) int {
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
 		row, err := command.Add(e.ctx, e.st,
-			command.AddOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency},
+			command.AddOpts{Total: *total, Merchant: *merchant, Date: *date, Currency: *currency, Category: *cat},
 			time.Now(), e.cfg.Loc)
 		if err != nil {
 			return mapErr(stderr, *asJSON, err)

@@ -71,6 +71,22 @@ func SavedCard(shortID string, v validate.Validated, edited bool) string {
 	return Card(shortID, v, edited) + "\n\n" + messages.Saved
 }
 
+// manualValidated adapts a receipt-less row to the card renderer. Merchant is
+// the canon, so the "en el ticket:" line never shows on a manual row.
+func manualValidated(row store.TxnRow) validate.Validated {
+	return validate.Validated{
+		Merchant: row.MerchantCanon, MerchantCanon: row.MerchantCanon,
+		Category: row.Category, CategorySource: row.CategorySource,
+		OccurredOn: row.OccurredOn, Currency: row.Currency, AmountMinor: row.AmountMinor,
+	}
+}
+
+// UndoneCard replaces a manual card once ↩️ Deshacer voided the row.
+func UndoneCard(row store.TxnRow) string {
+	return fmt.Sprintf(messages.UndoneCard, messages.Undone, html.EscapeString(row.ShortID),
+		html.EscapeString(row.MerchantCanon), money.Format(row.AmountMinor, row.Currency))
+}
+
 func DiscardedCard(shortID string) string {
 	return fmt.Sprintf("%s · <code>%s</code>", messages.Discarded, html.EscapeString(shortID))
 }
@@ -129,6 +145,7 @@ func ListTable(rows []store.TxnRow) string {
 	}
 	footer := strings.Repeat("─", listTableWidth) + "\n" +
 		fmt.Sprintf("TOTAL %s · %d", strings.Join(parts, " + "), len(rows))
+	// a manual row corrected by reply counts here too: same gesture, same metric
 	if edited > 0 { // the window's own metric, visible day to day
 		footer += fmt.Sprintf(" · ✏️ %d (%d%%)", edited, edited*100/len(rows))
 	}

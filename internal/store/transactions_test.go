@@ -268,3 +268,32 @@ func TestResolveID(t *testing.T) {
 		t.Fatal("invalid prefix must error")
 	}
 }
+
+func TestFindDuplicateWindow(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	day := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	if _, err := s.AddTransaction(ctx, NewTransaction{OccurredOn: day, Merchant: "ADSUGAS",
+		AmountMinor: 45200, Currency: "MXN", Source: "manual",
+		Category: "servicios", CategorySource: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	got, hit, err := s.FindDuplicate(ctx, day.AddDate(0, 0, 2), 45200, 3)
+	if err != nil || !hit || got.MerchantCanon != "ADSUGAS" {
+		t.Fatalf("2 days apart: hit = %v row = %+v err = %v", hit, got, err)
+	}
+	if got.Category != "servicios" || got.CategorySource != "human" { // Add persists both
+		t.Errorf("category not stored: %+v", got)
+	}
+	// a weekly fixed payment is NOT a duplicate of itself
+	if _, hit, err := s.FindDuplicate(ctx, day.AddDate(0, 0, 7), 45200, 3); err != nil || hit {
+		t.Fatalf("7 days apart: hit = %v err = %v", hit, err)
+	}
+	if _, hit, err := s.FindDuplicate(ctx, day, 45300, 3); err != nil || hit {
+		t.Fatalf("other amount: hit = %v err = %v", hit, err)
+	}
+	// days 0 is the receipt pipeline's window: that day only
+	if _, hit, err := s.FindDuplicate(ctx, day.AddDate(0, 0, 1), 45200, 0); err != nil || hit {
+		t.Fatalf("days 0: hit = %v err = %v", hit, err)
+	}
+}

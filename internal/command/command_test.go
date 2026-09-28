@@ -197,3 +197,22 @@ func TestEditCategory(t *testing.T) {
 		t.Error("unknown slug must be rejected")
 	}
 }
+
+func TestAddWithCategoryAndCanon(t *testing.T) {
+	s := store.NewTest(t)
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	row, err := Add(context.Background(), s,
+		AddOpts{Total: "500", Merchant: "Limpieza Paty S.A. DE C.V.", Category: "Súper"}, now, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Category != "super" || row.CategorySource != "human" {
+		t.Fatalf("row = %+v", row)
+	}
+	if row.Merchant != "Limpieza Paty S.A. DE C.V." || row.MerchantCanon != "Limpieza Paty" {
+		t.Fatalf("raw = %q canon = %q", row.Merchant, row.MerchantCanon)
+	}
+	if _, err := Add(context.Background(), s, AddOpts{Total: "500", Merchant: "X", Category: "comida"}, now, time.UTC); err == nil {
+		t.Error("unknown category must be rejected")
+	}
+}

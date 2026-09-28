@@ -62,9 +62,10 @@ const insertEditLog = `insert into edit_log (transaction_id, field, old_value, n
 // AddTransaction inserts a manual (receipt-less) transaction and returns it.
 func (s *Store) AddTransaction(ctx context.Context, t NewTransaction) (TxnRow, error) {
 	var id string
-	err := s.pool.QueryRow(ctx, `insert into transactions (occurred_on, merchant, merchant_canon, amount_minor, currency, source)
-		values ($1,$2,coalesce(nullif($3,''),$2),$4,$5,$6) returning id`,
-		t.OccurredOn, t.Merchant, t.MerchantCanon, t.AmountMinor, t.Currency, t.Source).Scan(&id)
+	err := s.pool.QueryRow(ctx, `insert into transactions (occurred_on, merchant, merchant_canon, amount_minor, currency, source, category, category_source)
+		values ($1,$2,coalesce(nullif($3,''),$2),$4,$5,$6,nullif($7,''),nullif($8,'')) returning id`,
+		t.OccurredOn, t.Merchant, t.MerchantCanon, t.AmountMinor, t.Currency, t.Source,
+		t.Category, t.CategorySource).Scan(&id)
 	if err != nil {
 		return TxnRow{}, err
 	}
@@ -250,11 +251,20 @@ func (s *Store) VoidTransaction(ctx context.Context, txnID string) (bool, error)
 	return tag.RowsAffected() == 1, err
 }
 
-func (s *Store) HasDuplicate(ctx context.Context, occurredOn time.Time, amountMinor int64) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx, `select exists(select 1 from transactions where voided_at is null and occurred_on=$1 and amount_minor=$2)`,
-		occurredOn, amountMinor).Scan(&exists)
-	return exists, err
+// FindDuplicate returns the active transaction with the same amount closest to
+// on within ±days (days 0 = that day only), so the caller can name it.
+func (s *Store) FindDuplicate(ctx context.Context, on time.Time, amountMinor int64, days int) (TxnRow, bool, error) {
+	row, err := scanTxnRow(s.pool.QueryRow(ctx, `select `+txnRowCols+` from transactions
+		where voided_at is null and amount_minor=$2
+		  and occurred_on between $1::date - $3::int and $1::date + $3::int
+		order by abs(occurred_on - $1::date) limit 1`, on, amountMinor, days))
+	if errors.Is(err, ErrNotFound) {
+		return TxnRow{}, false, nil
+	}
+	if err != nil {
+		return TxnRow{}, false, err
+	}
+	return row, true, nil
 }
 
 var hexPrefix = regexp.MustCompile(`^[0-9a-f]{8}$`)

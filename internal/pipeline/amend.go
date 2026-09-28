@@ -101,7 +101,7 @@ func Amend(ctx context.Context, d Deps, receiptID string, f correct.Fields, now 
 	if f.Total != "" { // the human is the authority on the total
 		v.Warnings = slices.DeleteFunc(v.Warnings, func(w string) bool { return strings.HasPrefix(w, validate.ItemsWarnPrefix) })
 	}
-	if dup, err := d.Store.HasDuplicate(ctx, v.OccurredOn, v.AmountMinor); err == nil && dup {
+	if _, dup, err := d.Store.FindDuplicate(ctx, v.OccurredOn, v.AmountMinor, 0); err == nil && dup {
 		v.Warnings = append(v.Warnings, "⚠️ posible duplicado: ya hay un gasto con esa fecha y monto")
 	}
 	if prev == "failed" {
