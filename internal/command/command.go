@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -169,6 +170,9 @@ func Edit(ctx context.Context, st *store.Store, idPrefix string, o EditOpts, now
 	if len(set) == 0 {
 		return store.TxnRow{}, fmt.Errorf("nada que editar: pasa --total, --merchant, --date, --currency o --category")
 	}
+	// re-running the same edit (a labeling script run twice) is not a
+	// correction: no edit_log row when nothing changed
+	edits = slices.DeleteFunc(edits, func(e store.FieldEdit) bool { return e.Old == e.New })
 	for i := range edits {
 		edits[i].Source = o.Source
 	}
