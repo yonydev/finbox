@@ -42,6 +42,7 @@ Total:
 - total es la línea TOTAL: lo que pagó el cliente por toda la compra. No es una forma de pago (TARJETA, DÉBITO, EFECTIVO, CAMBIO) ni un IMPORTE parcial: TOTAL 2,601.00 pagado con dos tarjetas → total 2601.00.
 - Si hay PROPINA: total es el Total impreso que ya la incluye (Monto 806.00 + Propina 80.60 → Total 886.60). Si solo hay Total y Propina por separado, total es ese Total; nunca sumes.
 - Voucher de terminal bancaria con una sola cantidad (Total M.N., Importe): esa es el total.
+- Recibo de servicios: total es el TOTAL A PAGAR impreso, aunque venga redondeado a pesos; no la suma del desglose (energía + IVA = 572.83, TOTAL A PAGAR 573 → total 573.00).
 - total siempre positivo: un cargo "-420.00" en la app del banco es 420.00.`
 
 type Extractor struct {
