@@ -229,6 +229,9 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 	}
 	if action == "v" { // undo a manual expense: a transaction id, not a receipt
 		row, err := b.d.Store.GetTransactionByID(ctx, receiptID)
+		if len(receiptID) != 36 { // not a uuid at all: a forged or truncated button, not a DB error
+			err = store.ErrNotFound
+		}
 		if err == nil {
 			var ok bool
 			if ok, err = b.d.Store.VoidTransaction(ctx, row.ID); err == nil && !ok {
@@ -338,7 +341,7 @@ func (b *Bot) validatedFromStored(rec store.Receipt) (validate.Validated, error)
 // manualCardID pulls the short id out of a manual card's first line
 // ("🧾 ab12cd34 · Limpieza Paty …"): a receipt-less row has no
 // tg_card_message_id, so the card text is the only key there is.
-var manualCardID = regexp.MustCompile(`^\S+ ([0-9a-f]{8}) `)
+var manualCardID = regexp.MustCompile(`^\S+ (?:\S+ )?([0-9a-f]{8}) `) // saved «🧾 id ·» and undone «↩️ Deshecho · id ·» cards alike
 
 // handleReply treats a reply to a receipt card as a correction. Returns false
 // when the replied-to message is not a card, so the text falls through to the
@@ -366,6 +369,10 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 		}
 	}
 	sendErr := func(err error) {
+		if errors.Is(err, store.ErrNotFound) { // a manual card whose row was undone: no English leak
+			b.send(ctx, chat, messages.AlreadyUndone)
+			return
+		}
 		b.send(ctx, chat, html.EscapeString(validate.CapRunes(err.Error(), 300)))
 	}
 	now := time.Now()
