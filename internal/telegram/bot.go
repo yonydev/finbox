@@ -587,17 +587,15 @@ func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {
 		b.send(ctx, chat, messages.SearchHelp)
 		return
 	}
-	hits, err := command.Search(ctx, b.d.Store, b.d.Embedder, line)
+	// Trigrams, not vectors: on the 2026-09-29 eval (28 queries, prod dump) vectors
+	// scored recall@5 0.69–0.71 vs trigram 0.65, under the 0.80 / +0.15 bar. The
+	// Embedder still indexes doc + vector on save so `finbox search --mode vec`
+	// keeps measuring; flip the nil here when a doc format clears the bar.
+	hits, err := command.Search(ctx, b.d.Store, nil, line)
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrAmbiguous) {
-		// a bad "parecido a <id>": wrong in any mode, retrying on trigrams
-		// would only lose the reason
 		b.send(ctx, chat, fmt.Sprintf(messages.SearchNoSuchExpense,
 			html.EscapeString(strings.TrimPrefix(store.Fold(line), "parecido a "))))
 		return
-	}
-	if err != nil && b.d.Embedder != nil { // OpenAI down: the baseline still answers
-		b.d.Log.Warn("search vec failed, trigram fallback", "err", err)
-		hits, err = command.Search(ctx, b.d.Store, nil, line)
 	}
 	if err != nil {
 		b.send(ctx, chat, html.EscapeString(err.Error()))
