@@ -62,9 +62,18 @@ varios de un jalón: <code>total 285 fecha 15/09</code>
 	AlreadyUndone = "ya estaba deshecho"
 	// DuplicateWarning names the row it collided with: comercio · 02/01 · monto.
 	DuplicateWarning = "⚠️ posible duplicado: %s · %s · %s"
-	NoExpenses       = "sin gastos todavía"
-	NothingPending   = "nada pendiente ✨"
-	HelpText         = `🧾 <b>finbox</b>
+	// SearchHelp carries its own HTML — send it raw, never escaped.
+	SearchHelp = `🔎 <b>/search</b> busca gastos por lo que compraste
+<code>/search pañales</code> · <code>/search luz</code> · <code>/search parecido a a69931a9</code>`
+	// SearchHeader, SearchNothing: the query, escaped. SearchFooter: how many
+	// rows came back — a count, never a sum.
+	SearchHeader        = "🔎 «%s»"
+	SearchFooter        = "%d parecidos"
+	SearchNothing       = "🔎 nada parecido a «%s»"
+	SearchNoSuchExpense = "no encuentro el gasto %s"
+	NoExpenses          = "sin gastos todavía"
+	NothingPending      = "nada pendiente ✨"
+	HelpText            = `🧾 <b>finbox</b>
 <i>convierte tickets en gastos</i>
 
 Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con un tap.
@@ -73,6 +82,8 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 ─────────────
 ➕ /add <code>monto comercio</code>
       gasto sin ticket · <code>/add 500 Limpieza Paty</code> · más en /add
+🔎 /search <code>palabras</code>
+      gastos parecidos a lo que escribas · <code>/search pañales</code>
 📋 /list <code>N</code>
       últimos N gastos · default 10, máx. 50
 📆 /month <code>mes</code>

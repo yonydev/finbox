@@ -108,6 +108,35 @@ func ListTable(rows []store.TxnRow) string {
 	if len(rows) == 0 {
 		return ""
 	}
+	header, lines := tableLines(rows)
+	totals := map[string]int64{}
+	var currencies []string // order of first appearance
+	edited := 0
+	for _, r := range rows {
+		if _, seen := totals[r.Currency]; !seen {
+			currencies = append(currencies, r.Currency)
+		}
+		totals[r.Currency] += r.AmountMinor
+		if r.Edited {
+			edited++
+		}
+	}
+	parts := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		parts = append(parts, fmt.Sprintf("%s %s", money.Format(totals[c], c), c))
+	}
+	footer := strings.Repeat("─", listTableWidth) + "\n" +
+		fmt.Sprintf("TOTAL %s · %d", strings.Join(parts, " + "), len(rows))
+	// a manual row corrected by reply counts here too: same gesture, same metric
+	if edited > 0 { // the window's own metric, visible day to day
+		footer += fmt.Sprintf(" · ✏️ %d (%d%%)", edited, edited*100/len(rows))
+	}
+	return pre(header, lines, footer)
+}
+
+// tableLines renders the header and one padded line per row. The footer is the
+// caller's: /list sums, /search counts.
+func tableLines(rows []store.TxnRow) (string, []string) {
 	amtW := len("MONTO")
 	amounts := make([]string, len(rows))
 	for i, r := range rows {
@@ -122,36 +151,32 @@ func ListTable(rows []store.TxnRow) string {
 	}
 	header := fmt.Sprintf("%-8s  %-5s  %*s  %s", "ID", "FECHA", amtW, "MONTO", "COMERCIO")
 	lines := make([]string, 0, len(rows))
-	totals := map[string]int64{}
-	var currencies []string // order of first appearance
-	edited := 0
 	for i, r := range rows {
-		if _, seen := totals[r.Currency]; !seen {
-			currencies = append(currencies, r.Currency)
-		}
-		totals[r.Currency] += r.AmountMinor
 		line := fmt.Sprintf("%-8s  %-5s  %*s  %s",
 			r.ShortID, r.OccurredOn.Format("02/01"), amtW, amounts[i],
 			validate.CapRunes(r.MerchantCanon, merchW))
 		if r.Edited { // trailing so the emoji's odd width can't break column alignment
 			line += " ✏️"
-			edited++
 		}
 		lines = append(lines, line)
 	}
-	parts := make([]string, 0, len(currencies))
-	for _, c := range currencies {
-		parts = append(parts, fmt.Sprintf("%s %s", money.Format(totals[c], c), c))
-	}
-	footer := strings.Repeat("─", listTableWidth) + "\n" +
-		fmt.Sprintf("TOTAL %s · %d", strings.Join(parts, " + "), len(rows))
-	// a manual row corrected by reply counts here too: same gesture, same metric
-	if edited > 0 { // the window's own metric, visible day to day
-		footer += fmt.Sprintf(" · ✏️ %d (%d%%)", edited, edited*100/len(rows))
-	}
+	return header, lines
+}
 
-	body := header + "\n" + strings.Join(lines, "\n") + "\n" + footer
-	return "<pre>" + html.EscapeString(body) + "</pre>"
+func pre(header string, lines []string, footer string) string {
+	return "<pre>" + html.EscapeString(header+"\n"+strings.Join(lines, "\n")+"\n"+footer) + "</pre>"
+}
+
+// SearchTable renders hits in rank order. The footer counts and never sums: a
+// TOTAL under five retrieved rows reads as "lo que gasté en X", exactly the
+// answer a similarity search must not give.
+func SearchTable(hits []store.Hit) string {
+	rows := make([]store.TxnRow, len(hits))
+	for i, h := range hits {
+		rows[i] = h.TxnRow
+	}
+	header, lines := tableLines(rows)
+	return pre(header, lines, strings.Repeat("─", listTableWidth)+"\n"+fmt.Sprintf(messages.SearchFooter, len(hits)))
 }
 
 // MonthSummary renders the month header (per-currency totals, derived from the
