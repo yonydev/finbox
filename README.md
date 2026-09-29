@@ -131,7 +131,7 @@ finbox search --json --mode trgm pañales    # five closest expenses, each with 
 finbox reembed --dry-run                    # print the text that would be indexed, call nothing
 ```
 
-**What search indexes.** One short line per expense: the display merchant name, the category label and the item names — never amounts, dates or ids. That line and your query are sent to OpenAI to be turned into vectors, so search words leave the machine the same way receipt photos already do. `--mode trgm` is the offline baseline: it matches the same stored text with Postgres trigrams and calls nothing. `finbox reembed` is idempotent and runs on every deploy; the bot also indexes each expense right after it is saved or corrected.
+**What search indexes.** One short line per expense: the display merchant name, the category label and the item names — never amounts, dates or ids. The bot matches your query against that line with Postgres trigrams (`pg_trgm`), so typos and partial words work but synonyms do not, and a search never leaves the machine. The same line is also embedded with OpenAI when an expense is saved or corrected, so `finbox search --mode vec` can keep measuring vector search against the trigram baseline; on the current corpus vectors did not beat it enough to ship. `finbox reembed` is idempotent and runs on every deploy; the bot also indexes each expense right after it is saved or corrected.
 
 Every read/write CLI command accepts `--json` for scripting, with stable exit codes (`0` ok, `1` runtime error, `2` usage error, `3` not found/ambiguous id). `<id>` can be a full UUID or its 8-character short prefix, same one shown in `/list` and `finbox list`.
 
