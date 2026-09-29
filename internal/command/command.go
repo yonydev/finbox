@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"finbox/internal/category"
 	"finbox/internal/daytok"
+	"finbox/internal/embed"
 	"finbox/internal/merchant"
 	"finbox/internal/messages"
 	"finbox/internal/money"
@@ -218,4 +220,35 @@ func Reprocess(ctx context.Context, d pipeline.Deps, idPrefix string) (pipeline.
 		return pipeline.Result{}, fmt.Errorf("reprocess opera sobre recibos, no gastos")
 	}
 	return pipeline.Reprocess(ctx, d, id)
+}
+
+var similarRe = regexp.MustCompile(`^parecido a ([0-9a-f]{8}|[0-9a-f-]{36})$`)
+
+// Search returns the 5 closest expenses to text, nearest first. emb nil = the
+// trigram baseline. "parecido a <id>" ranks by the stored vector (or doc) of
+// that expense and leaves it out of the results.
+func Search(ctx context.Context, st *store.Store, emb *embed.Client, text string) ([]store.Hit, error) {
+	q := store.Fold(text)
+	if m := similarRe.FindStringSubmatch(q); m != nil {
+		txnID, err := resolveTxn(ctx, st, m[1])
+		if err != nil {
+			return nil, err
+		}
+		if emb != nil {
+			return st.SearchSimilar(ctx, emb.Model, txnID)
+		}
+		docs, err := st.TxnDocs(ctx, txnID)
+		if err != nil || len(docs) == 0 {
+			return nil, err
+		}
+		return st.SearchTrigram(ctx, docs[0].Doc, txnID)
+	}
+	if emb == nil {
+		return st.SearchTrigram(ctx, q, "")
+	}
+	vecs, err := emb.Embed(ctx, []string{q})
+	if err != nil {
+		return nil, err
+	}
+	return st.SearchEmbeddings(ctx, emb.Model, vecs[0])
 }
