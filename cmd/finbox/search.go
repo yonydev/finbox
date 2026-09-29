@@ -20,10 +20,10 @@ type hitJSON struct {
 
 // cmdSearch prints the 5 closest expenses, nearest first, with their raw
 // distance. It never applies the bot's cutoff: the eval must see the whole
-// top-5. --mode trgm is the no-API baseline.
+// top-5. trgm is what the bot ships; vec spends one API call and exists to keep measuring.
 func cmdSearch(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("search", flag.ContinueOnError)
-	mode := fsx.String("mode", "vec", "vec | trgm")
+	mode := fsx.String("mode", "trgm", "trgm (lo que usa el bot) | vec (embebe la consulta con OpenAI)")
 	asJSON := fsx.Bool("json", false, "salida JSON")
 	const usage = "uso: finbox search [--mode vec|trgm] [--json] <texto…>"
 	setUsage(fsx, usage)

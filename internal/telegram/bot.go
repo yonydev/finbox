@@ -575,11 +575,11 @@ func (b *Bot) handleAdd(ctx context.Context, chat int64, text string, now time.T
 	b.embed(ctx, row.ID)
 }
 
-// searchCutoff trims the sorted hits from the tail: anything farther is "nada
-// parecido". Same constant in both modes (cosine distance and 1 - word_similarity).
-// ponytail: provisional; recalibrate from docs/search-eval.py (worst-expected vs
-// best-non-expected columns) after any embed model or BuildDoc change, or when
-// "nada parecido" fires on a query that should hit.
+// searchCutoff trims the sorted trigram hits from the tail: anything farther is
+// "nada parecido". On the 2026-09-29 eval true hits sit at 0.0–0.45 and noise at
+// 0.5–0.9; 0.65 drops the noise tail and costs a few long-vs-long "parecido a" hits.
+// ponytail: recalibrate from docs/search-eval.py (worst-expected vs best-non-expected
+// columns) after any BuildDoc change, or when "nada parecido" fires on a query that should hit.
 const searchCutoff = 0.65
 
 func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {

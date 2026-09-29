@@ -64,9 +64,9 @@ varios de un jalón: <code>total 285 fecha 15/09</code>
 	DuplicateWarning = "⚠️ posible duplicado: %s · %s · %s"
 	// SearchHelp carries its own HTML — send it raw, never escaped.
 	SearchHelp = `🔎 <b>/search</b> busca gastos por comercio, categoría o lo que compraste
-<code>/search pañales</code> · <code>/search farmacia</code> · <code>/search luz</code>
+<code>/search pañales</code> · <code>/search tamales</code> · <code>/search estacionamiento</code>
 
-· no hace falta el nombre exacto: <code>pañales</code> encuentra el ticket de Huggies
+· aguanta errores y pedazos de palabra: <code>farmasia</code> encuentra la farmacia, <code>uber</code> los viajes
 · ¿gastos parecidos a uno que ya tienes? <code>/search parecido a a69931a9</code> (el id sale en /list)
 · por monto o fecha no busca: para eso /list y /month`
 	// SearchHeader, SearchNothing: the query, escaped. SearchFooter: how many
