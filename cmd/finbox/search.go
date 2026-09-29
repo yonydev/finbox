@@ -13,10 +13,6 @@ import (
 	"finbox/internal/store"
 )
 
-// embedChunk is how many docs go in one embeddings call; the API takes 2048,
-// the whole corpus fits in one call today.
-const embedChunk = 100
-
 type hitJSON struct {
 	txnJSON
 	Distance float64 `json:"distance"`
@@ -46,7 +42,7 @@ func cmdSearch(argv []string, stdout, stderr io.Writer) int {
 				cliErr(stderr, *asJSON, "falta OPENAI_API_KEY")
 				return exitUsage
 			}
-			emb = &embed.Client{APIKey: e.cfg.OpenAIKey, Model: embed.Model}
+			emb = &embed.Client{APIKey: e.cfg.OpenAIKey}
 		}
 		hits, err := command.Search(e.ctx, e.st, emb, query)
 		if err != nil {
@@ -68,13 +64,12 @@ func cmdSearch(argv []string, stdout, stderr io.Writer) int {
 	})
 }
 
-// cmdReembed indexes every active expense whose doc or model changed.
+// cmdReembed indexes every active expense whose doc or embedding model changed.
 // Idempotent and cheap on a no-op, so deploy.sh runs it every time.
 func cmdReembed(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("reembed", flag.ContinueOnError)
 	dryRun := fsx.Bool("dry-run", false, "solo muestra los docs por indexar, no llama a OpenAI")
-	model := fsx.String("model", embed.Model, "modelo de embeddings")
-	setUsage(fsx, "uso: finbox reembed [--dry-run] [--model M]")
+	setUsage(fsx, "uso: finbox reembed [--dry-run]")
 	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
 		return code
 	}
@@ -85,7 +80,7 @@ func cmdReembed(argv []string, stdout, stderr io.Writer) int {
 		}
 		var stale []store.TxnDoc
 		for _, d := range docs {
-			if d.Stale(*model) {
+			if d.Stale(embed.Model) {
 				stale = append(stale, d)
 			}
 		}
@@ -96,25 +91,26 @@ func cmdReembed(argv []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "%d gastos por indexar (dry-run, sin escribir)\n", len(stale))
 			return exitOK
 		}
+		if len(stale) == 0 { // the usual deploy: nothing to do, no key needed, no call
+			fmt.Fprintln(stdout, "0 gastos indexados")
+			return exitOK
+		}
 		if e.cfg.OpenAIKey == "" {
 			cliErr(stderr, false, "falta OPENAI_API_KEY")
 			return exitUsage
 		}
-		emb := &embed.Client{APIKey: e.cfg.OpenAIKey, Model: *model}
-		for i := 0; i < len(stale); i += embedChunk {
-			chunk := stale[i:min(i+embedChunk, len(stale))]
-			texts := make([]string, len(chunk))
-			for j, d := range chunk {
-				texts[j] = d.Doc
-			}
-			vecs, err := emb.Embed(e.ctx, texts)
-			if err != nil {
+		texts := make([]string, len(stale))
+		for i, d := range stale {
+			texts[i] = d.Doc
+		}
+		// ponytail: one call; the API takes 2048 inputs per request, chunk when the corpus passes that.
+		vecs, err := (&embed.Client{APIKey: e.cfg.OpenAIKey}).Embed(e.ctx, texts)
+		if err != nil {
+			return mapErr(stderr, false, err)
+		}
+		for i, d := range stale {
+			if err := e.st.UpsertEmbedding(e.ctx, d.ID, embed.Model, d.Hash, d.Doc, vecs[i]); err != nil {
 				return mapErr(stderr, false, err)
-			}
-			for j, d := range chunk {
-				if err := e.st.UpsertEmbedding(e.ctx, d.ID, *model, d.Hash, d.Doc, vecs[j]); err != nil {
-					return mapErr(stderr, false, err)
-				}
 			}
 		}
 		fmt.Fprintf(stdout, "%d gastos indexados\n", len(stale))

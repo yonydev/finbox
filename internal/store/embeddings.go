@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"finbox/internal/category"
@@ -61,18 +60,10 @@ func DocHash(doc string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// vecLiteral renders a vector as pgvector's text input format.
+// vecLiteral renders a vector as pgvector's text input format. fmt already
+// prints a []float64 as "[1 0 0]", brackets included; only the separator differs.
 func vecLiteral(v []float64) string {
-	var b strings.Builder
-	b.WriteByte('[')
-	for i, x := range v {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(strconv.FormatFloat(x, 'g', -1, 32))
-	}
-	b.WriteByte(']')
-	return b.String()
+	return strings.Join(strings.Fields(fmt.Sprint(v)), ",")
 }
 
 // TxnDoc is one expense's current doc next to the (model, hash) that is stored.

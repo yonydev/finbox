@@ -52,7 +52,7 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 	api := telegram.NewClient(cfg.BotToken)
 	d := pipeline.Deps{Store: st, Blob: fs.New(cfg.BlobDir),
 		Extractor: openai.New(cfg.OpenAIKey, cfg.OpenAIModel),
-		Embedder:  &embed.Client{APIKey: cfg.OpenAIKey, Model: embed.Model},
+		Embedder:  &embed.Client{APIKey: cfg.OpenAIKey},
 		Loc:       cfg.Loc, Log: log}
 	bot := telegram.NewBot(api, d, cfg.AllowedUserIDs)
 

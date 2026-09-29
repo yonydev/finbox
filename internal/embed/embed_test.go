@@ -21,7 +21,7 @@ func TestEmbedRequestAndParse(t *testing.T) {
 		w.Write([]byte(`{"data":[{"index":0,"embedding":[0.5,0.25]},{"index":1,"embedding":[1,0]}]}`))
 	}))
 	defer srv.Close()
-	c := &Client{APIKey: "sk-test", Model: Model, BaseURL: srv.URL + "/"}
+	c := &Client{APIKey: "sk-test", BaseURL: srv.URL + "/"}
 	vecs, err := c.Embed(context.Background(), []string{"pañales", "gasolina"})
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestEmbedCountMismatchAndHTTPError(t *testing.T) {
 		w.Write([]byte(`{"data":[{"index":0,"embedding":[0.5]}]}`))
 	}))
 	defer short.Close()
-	c := &Client{APIKey: "sk-test", Model: Model, BaseURL: short.URL + "/"}
+	c := &Client{APIKey: "sk-test", BaseURL: short.URL + "/"}
 	if _, err := c.Embed(context.Background(), []string{"a", "b"}); err == nil {
 		t.Error("a short response must be an error")
 	}

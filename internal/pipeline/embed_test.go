@@ -30,7 +30,7 @@ func TestEmbedTxnSkipsWhenFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := Deps{Store: st, Loc: time.UTC, Log: slog.Default(),
-		Embedder: &embed.Client{APIKey: "sk-test", Model: embed.Model, BaseURL: srv.URL + "/"}}
+		Embedder: &embed.Client{APIKey: "sk-test", BaseURL: srv.URL + "/"}}
 
 	if err := EmbedTxn(ctx, d, row.ID); err != nil || calls != 1 {
 		t.Fatalf("first: %d calls, err %v", calls, err)
@@ -72,7 +72,7 @@ func TestEmbedTxnSkipsWhenFresh(t *testing.T) {
 	if _, err := st.VoidTransaction(ctx, row.ID); err != nil {
 		t.Fatal(err)
 	}
-	d.Embedder = &embed.Client{APIKey: "sk-test", Model: embed.Model, BaseURL: srv.URL + "/"}
+	d.Embedder = &embed.Client{APIKey: "sk-test", BaseURL: srv.URL + "/"}
 	if err := EmbedTxn(ctx, d, row.ID); err != nil || calls != 2 {
 		t.Fatalf("voided row: %d calls, err %v", calls, err)
 	}

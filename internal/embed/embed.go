@@ -19,7 +19,7 @@ const (
 // Client is nil-able: a nil *Client means the feature is off, so /search falls
 // back to trigrams and nothing is indexed.
 type Client struct {
-	APIKey, Model, BaseURL string // BaseURL "" = OpenAI; tests set srv.URL+"/" (the SDK path-joins)
+	APIKey, BaseURL string // BaseURL "" = OpenAI; tests set srv.URL+"/" (the SDK path-joins)
 }
 
 // Embed returns one vector per text, in order. 10 s deadline and no SDK
@@ -34,7 +34,7 @@ func (c *Client) Embed(ctx context.Context, texts []string) ([][]float64, error)
 	}
 	client := oa.NewClient(opts...)
 	resp, err := client.Embeddings.New(ctx, oa.EmbeddingNewParams{
-		Model:          oa.EmbeddingModel(c.Model),
+		Model:          oa.EmbeddingModel(Model),
 		Input:          oa.EmbeddingNewParamsInputUnion{OfArrayOfStrings: texts},
 		Dimensions:     oa.Int(Dims),
 		EncodingFormat: oa.EmbeddingNewParamsEncodingFormatFloat,

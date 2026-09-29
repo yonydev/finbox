@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"finbox/internal/embed"
 	"finbox/internal/store"
 )
 
@@ -212,5 +213,17 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 	errb.Reset()
 	if code := run([]string{"finbox", "search", "--mode", "trgm"}, &out, &errb); code != 2 {
 		t.Fatalf("empty query: exit %d, want 2", code)
+	}
+	// nothing stale — the usual deploy: exit 0 without a key, because nothing is called
+	docs, err := s.TxnDocs(ctx, "")
+	if err != nil || len(docs) != 1 {
+		t.Fatalf("%d docs, err %v", len(docs), err)
+	}
+	if err := s.UpsertEmbedding(ctx, docs[0].ID, embed.Model, docs[0].Hash, docs[0].Doc, vec); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "0 gastos indexados") {
+		t.Fatalf("no-op reembed: exit %d, out %q", code, out.String())
 	}
 }

@@ -235,7 +235,7 @@ func Search(ctx context.Context, st *store.Store, emb *embed.Client, text string
 			return nil, err
 		}
 		if emb != nil {
-			return st.SearchSimilar(ctx, emb.Model, txnID)
+			return st.SearchSimilar(ctx, embed.Model, txnID)
 		}
 		docs, err := st.TxnDocs(ctx, txnID)
 		if err != nil || len(docs) == 0 {
@@ -250,5 +250,5 @@ func Search(ctx context.Context, st *store.Store, emb *embed.Client, text string
 	if err != nil {
 		return nil, err
 	}
-	return st.SearchEmbeddings(ctx, emb.Model, vecs[0])
+	return st.SearchEmbeddings(ctx, embed.Model, vecs[0])
 }

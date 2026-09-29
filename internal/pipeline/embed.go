@@ -1,6 +1,10 @@
 package pipeline
 
-import "context"
+import (
+	"context"
+
+	"finbox/internal/embed"
+)
 
 // EmbedTxn indexes one expense for /search. It skips when (model, doc_hash)
 // already match, so the save/edit hooks can call it unconditionally and a
@@ -11,12 +15,12 @@ func EmbedTxn(ctx context.Context, d Deps, txnID string) error {
 		return nil
 	}
 	docs, err := d.Store.TxnDocs(ctx, txnID)
-	if err != nil || len(docs) == 0 || !docs[0].Stale(d.Embedder.Model) {
+	if err != nil || len(docs) == 0 || !docs[0].Stale(embed.Model) {
 		return err
 	}
 	vecs, err := d.Embedder.Embed(ctx, []string{docs[0].Doc})
 	if err != nil {
 		return err
 	}
-	return d.Store.UpsertEmbedding(ctx, docs[0].ID, d.Embedder.Model, docs[0].Hash, docs[0].Doc, vecs[0])
+	return d.Store.UpsertEmbedding(ctx, docs[0].ID, embed.Model, docs[0].Hash, docs[0].Doc, vecs[0])
 }
