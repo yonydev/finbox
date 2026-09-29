@@ -111,6 +111,7 @@ Replying to a **pending** card edits the draft in place and keeps the buttons, s
 
 Bot commands:
 
+- `/search <words>` — the five expenses closest to what you bought (`/search pañales`); `/search parecido a <id>` ranks by an expense you already have
 - `/list [N]` — last N confirmed expenses (default 10)
 - `/month [token]` — total and count for a month (e.g. `/month aug`), reported per currency
 - `/pending` — receipts still awaiting confirmation or that failed extraction
@@ -126,7 +127,11 @@ finbox void <id>
 finbox reprocess <id>                       # re-extract a pending/failed/discarded receipt
 finbox extract ticket.jpg --json --today 2026-09-15   # one local file, no database
 finbox rerule --dry-run                     # recompute canonical merchant names, show the diff
+finbox search --json --mode trgm pañales    # five closest expenses, each with its distance
+finbox reembed --dry-run                    # print the text that would be indexed, call nothing
 ```
+
+**What search indexes.** One short line per expense: the display merchant name, the category label and the item names — never amounts, dates or ids. That line and your query are sent to OpenAI to be turned into vectors, so search words leave the machine the same way receipt photos already do. `--mode trgm` is the offline baseline: it matches the same stored text with Postgres trigrams and calls nothing. `finbox reembed` is idempotent and runs on every deploy; the bot also indexes each expense right after it is saved or corrected.
 
 Every read/write CLI command accepts `--json` for scripting, with stable exit codes (`0` ok, `1` runtime error, `2` usage error, `3` not found/ambiguous id). `<id>` can be a full UUID or its 8-character short prefix, same one shown in `/list` and `finbox list`.
 
@@ -152,7 +157,7 @@ FINBOX_DEPLOY_HOST=me@my-server ./deploy.sh
 
 The target needs: Docker with the compose plugin, a clone of this repo at `~/finbox` (override with `FINBOX_DEPLOY_DIR`), a filled `.env` (use the **production** bot token there, and set a real `POSTGRES_PASSWORD`), and a sentinel file marking your data disk so the script refuses to run against an unmounted volume: `touch /your/data/disk/.finbox-ssd` and set `FINBOX_DATA_SENTINEL` to that path (or `FINBOX_DATA_SENTINEL=skip` if the guard doesn't apply to your setup).
 
-The script builds the image on the target, brings up Postgres, writes a pre-migration dump, runs migrations and `finbox rerule`, restarts the app, and verifies the new version responds. The final smoke is real, not a `sleep`: the deploy fails if the bot doesn't reach Telegram long-polling within 45s, or if `finbox list --json` doesn't run against the migrated database.
+The script builds the image on the target, brings up Postgres, writes a pre-migration dump, runs migrations, `finbox rerule` and `finbox reembed`, restarts the app, and verifies the new version responds. The final smoke is real, not a `sleep`: the deploy fails if the bot doesn't reach Telegram long-polling within 45s, or if `finbox list --json` doesn't run against the migrated database.
 
 Backups are out of `deploy.sh`'s scope beyond the pre-migration dump it writes. `scripts/backup-offsite.sh` is the optional nightly job for root's crontab: it dumps Postgres, rotates local dumps, and `rclone copy`s both the dumps and the receipt blobs to an S3-compatible bucket (Cloudflare R2) through an rclone `crypt` remote, so content and file names are encrypted before they leave the machine. It needs `rclone` ≥ 1.75 and a `crypt` remote named `r2crypt` in root's `rclone.conf`; on failure it messages you through the bot. Before any migration that transforms data, restore your latest dump into a scratch database and run `migrate` plus `rerule --dry-run` against it first.
 

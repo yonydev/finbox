@@ -24,6 +24,9 @@ find backups -name 'pre-migrate-*.dump' -mtime +14 -delete
 docker compose run --rm -T finbox migrate </dev/null
 # Normalizes merchant names for rows nobody renamed by hand; idempotent, logs no edits.
 docker compose run --rm -T finbox rerule </dev/null
+# Indexes new or changed expenses for /search; the bot also indexes on save, so an
+# OpenAI hiccup here must not fail the deploy.
+docker compose run --rm -T finbox reembed </dev/null || echo "reembed falló; corre 'docker compose run --rm finbox reembed' después"
 docker compose up -d
 # Smoke: wait until THIS container start logs "polling" (--since StartedAt avoids the false negative
 # where up -d did not recreate the container and the old "polling" sits outside a fixed window),
