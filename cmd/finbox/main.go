@@ -35,6 +35,8 @@ func subcommands() []subcommand {
 		{"void", "anula un gasto", cmdVoid},
 		{"reprocess", "reprocesa un recibo", cmdReprocess},
 		{"rerule", "recalcula el nombre de los comercios", cmdRerule},
+		{"search", "busca gastos por lo que compraste", cmdSearch},
+		{"reembed", "indexa los gastos para /search", cmdReembed},
 		{"serve", "corre el bot + pipeline", cmdServe},
 	}
 }

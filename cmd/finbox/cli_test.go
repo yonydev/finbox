@@ -162,3 +162,55 @@ func TestCLIEditCategoryJSON(t *testing.T) {
 		t.Fatalf("row = %+v", row)
 	}
 }
+
+func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
+	s, txnID := cliStore(t) // one confirmed "Walmart"
+	t.Setenv("FINBOX_DB_URL", os.Getenv("TEST_DB_URL"))
+	t.Setenv("OPENAI_API_KEY", "") // no network in this test, in either subcommand
+	ctx := context.Background()
+	var out, errb bytes.Buffer
+
+	if code := run([]string{"finbox", "reembed", "--dry-run"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar") {
+		t.Fatalf("dry-run output:\n%s", out.String())
+	}
+	if hits, err := s.SearchTrigram(ctx, "walmart", ""); err != nil || len(hits) != 0 {
+		t.Fatalf("dry-run wrote %d rows (err %v)", len(hits), err)
+	}
+	out.Reset()
+	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 2 {
+		t.Fatalf("reembed without a key: exit %d, want 2", code)
+	}
+	if !strings.Contains(errb.String(), "falta OPENAI_API_KEY") {
+		t.Fatalf("stderr = %q", errb.String())
+	}
+	errb.Reset()
+
+	doc := store.BuildDoc("Walmart", "super", "Walmart", []string{"Café"})
+	vec := make([]float64, 512)
+	vec[0] = 1
+	if err := s.UpsertEmbedding(ctx, txnID, "m", store.DocHash(doc), doc, vec); err != nil {
+		t.Fatal(err)
+	}
+	if code := run([]string{"finbox", "search", "--json", "--mode", "trgm", "walmart"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var hits []map[string]any
+	if err := json.Unmarshal(out.Bytes(), &hits); err != nil || len(hits) != 1 {
+		t.Fatalf("json: %v %s", err, out.String())
+	}
+	if hits[0]["short_id"] != txnID[:8] || hits[0]["distance"].(float64) >= 1 {
+		t.Fatalf("hit = %+v", hits[0])
+	}
+	out.Reset()
+	if code := run([]string{"finbox", "search", "--mode", "vec", "walmart"}, &out, &errb); code != 2 {
+		t.Fatalf("vec without a key: exit %d, want 2 (stderr %s)", code, errb.String())
+	}
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"finbox", "search", "--mode", "trgm"}, &out, &errb); code != 2 {
+		t.Fatalf("empty query: exit %d, want 2", code)
+	}
+}
