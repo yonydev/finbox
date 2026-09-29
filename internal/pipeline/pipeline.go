@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"finbox/internal/blob/fs"
+	"finbox/internal/embed"
 	"finbox/internal/extract"
 	"finbox/internal/imgtype"
 	"finbox/internal/messages"
@@ -33,6 +34,7 @@ type Deps struct {
 	Store     *store.Store
 	Blob      BlobStore
 	Extractor Extractor
+	Embedder  *embed.Client // nil = /search runs on trigrams and nothing is indexed
 	Loc       *time.Location
 	Log       *slog.Logger
 	Backoff   func(attempt int) time.Duration // nil → default 2s·attempt
