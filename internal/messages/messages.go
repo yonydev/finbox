@@ -68,6 +68,7 @@ varios de un jalón: <code>total 285 fecha 15/09</code>
 
 · aguanta errores y pedazos de palabra: <code>farmasia</code> encuentra la farmacia, <code>uber</code> los viajes
 · ¿gastos parecidos a uno que ya tienes? <code>/search parecido a a69931a9</code> (el id sale en /list)
+· ¿quieres ver el ticket? toca el botón con su id debajo de la tabla y te lo reenvío
 · por monto o fecha no busca: para eso /list y /month`
 	// SearchHeader, SearchNothing: the query, escaped. SearchFooter: how many
 	// rows came back — a count, never a sum.
@@ -104,13 +105,16 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 🏷 categorías: super, restaurantes, hogar, servicios, transporte, salud, educacion, entretenimiento, ropa, otros
 📸 JPEG, PNG, WebP o PDF · máx. 20 MB
 🍏 si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
-	BtnUndo     = "↩️ Deshacer"
-	BtnConfirm  = "✅ Confirmar"
-	BtnDiscard  = "❌ Descartar"
-	BtnRetry    = "🔄 Reintentar"
-	BtnClose    = "❌ Cerrar"
-	ListClosed  = "🧾 lista cerrada"
-	ListCapNote = "máx. 50 — usa <code>finbox list</code> para más"
+	BtnUndo    = "↩️ Deshacer"
+	BtnConfirm = "✅ Confirmar"
+	BtnDiscard = "❌ Descartar"
+	BtnRetry   = "🔄 Reintentar"
+	BtnClose   = "❌ Cerrar"
+	// ReceiptButton labels one /search row's ticket button: the short id.
+	ReceiptButton = "🧾 %s"
+	ReceiptGone   = "no encuentro el ticket original en el chat · si borraste la foto o el PDF, no lo puedo reenviar"
+	ListClosed    = "🧾 lista cerrada"
+	ListCapNote   = "máx. 50 — usa <code>finbox list</code> para más"
 )
 
 // CategoryLabels holds the es-MX names that differ from the slug; the rest

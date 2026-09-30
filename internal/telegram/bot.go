@@ -252,6 +252,10 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 		}
 		return true
 	}
+	if action == "t" { // show the ticket behind a /search row: a transaction id
+		b.sendReceipt(ctx, chat, receiptID)
+		return true
+	}
 	rec, err := b.d.Store.GetReceipt(ctx, receiptID)
 	if err != nil {
 		b.edit(ctx, chat, msgID, messages.ReceiptNotFound, nil)
@@ -600,7 +604,7 @@ func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {
 		b.sendKB(ctx, chat, fmt.Sprintf(messages.SearchNothing, html.EscapeString(line)), closeKB)
 		return
 	}
-	b.sendKB(ctx, chat, fmt.Sprintf(messages.SearchHeader, html.EscapeString(line))+"\n"+SearchTable(hits), closeKB)
+	b.sendKB(ctx, chat, fmt.Sprintf(messages.SearchHeader, html.EscapeString(line))+"\n"+SearchTable(hits), receiptKB(hits))
 }
 
 // embed indexes a transaction for /search once its card is on screen.
@@ -617,6 +621,49 @@ func (b *Bot) embed(ctx context.Context, txnID string) {
 		return
 	}
 	b.d.Log.Warn("embed failed", "txn", txnID, "err", err)
+}
+
+// receiptKB puts one ticket button per hit that has a receipt, three per row,
+// with the close button as the last row. No receipts, no extra rows.
+func receiptKB(hits []store.Hit) *InlineKeyboard {
+	kb := InlineKeyboard{}
+	for _, h := range hits {
+		if h.ReceiptID == "" { // /add rows have no photo to show
+			continue
+		}
+		btn := Button{Text: fmt.Sprintf(messages.ReceiptButton, h.ShortID), CallbackData: "t|" + h.ID}
+		if n := len(kb); n > 0 && len(kb[n-1]) < 3 {
+			kb[n-1] = append(kb[n-1], btn)
+			continue
+		}
+		kb = append(kb, []Button{btn})
+	}
+	if len(kb) == 0 {
+		return closeKB
+	}
+	kb = append(kb, (*closeKB)[0])
+	return &kb
+}
+
+// sendReceipt re-sends the original photo/document of a transaction's receipt.
+// ponytail: if the original message was deleted, copyMessage fails; upload from
+// BlobDir with sendPhoto/sendDocument when a real user hits this.
+func (b *Bot) sendReceipt(ctx context.Context, chat int64, txnID string) {
+	row, err := b.d.Store.GetTransactionByID(ctx, txnID)
+	if err != nil || row.ReceiptID == "" {
+		b.send(ctx, chat, messages.ReceiptGone)
+		return
+	}
+	rec, err := b.d.Store.GetReceipt(ctx, row.ReceiptID)
+	// only the chat that owns the receipt may get it back
+	if err != nil || rec.TgChatID == 0 || rec.TgMessageID == 0 || rec.TgChatID != chat {
+		b.send(ctx, chat, messages.ReceiptGone)
+		return
+	}
+	if err := b.api.CopyMessage(ctx, chat, rec.TgChatID, rec.TgMessageID); err != nil {
+		b.d.Log.Warn("copy receipt failed", "txn", txnID, "err", err)
+		b.send(ctx, chat, messages.ReceiptGone)
+	}
 }
 
 func undoKB(txnID string) *InlineKeyboard {
