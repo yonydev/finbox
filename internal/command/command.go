@@ -1,6 +1,7 @@
 package command
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"regexp"
@@ -224,31 +225,113 @@ func Reprocess(ctx context.Context, d pipeline.Deps, idPrefix string) (pipeline.
 
 var similarRe = regexp.MustCompile(`^parecido a ([0-9a-f]{8}|[0-9a-f-]{36})$`)
 
-// Search returns the 5 closest expenses to text, nearest first. emb nil = the
-// trigram baseline. "parecido a <id>" ranks by the stored vector (or doc) of
-// that expense and leaves it out of the results.
-func Search(ctx context.Context, st *store.Store, emb *embed.Client, text string) ([]store.Hit, error) {
-	q := store.Fold(text)
+const (
+	rrfK = 60
+	// Hybrid-only cutoffs; single modes return the raw top-5 for the eval.
+	// ponytail: 0.59 sits in the 0.576-0.600 window measured 2026-09-29 on the prod dump
+	// after item vectors: every vec-only true hit is <= 0.575 (pan 0.575, luz->CFE 0.548),
+	// nonsense queries start at 0.601 (zzzzzz). One-hundredth margin each side; recalibrate
+	// from the eval's distance columns + three nonsense queries after any model or doc
+	// change, or when "nada parecido" fires on a query that should hit.
+	trgmCutoff = 0.65
+	vecCutoff  = 0.59
+)
+
+// Search returns the 5 expenses closest to text, nearest first. mode is the
+// CLI's literal: "trgm" (no API call), "vec" (the query is embedded), "hybrid"
+// (what the bot ships: the trigram hits at or under trgmCutoff fused by RRF
+// with the vector top-5, then vector-only hits farther than vecCutoff dropped).
+// A nil emb skips the vector list, so hybrid degrades to the truncated trigram
+// list. "parecido a <id>" probes with the stored vector and doc of that expense
+// and leaves it out of the results; it makes no API call.
+func Search(ctx context.Context, st *store.Store, emb *embed.Client, mode, text string) ([]store.Hit, error) {
+	if mode == "vec" && emb == nil {
+		return nil, fmt.Errorf("modo vec sin cliente de embeddings")
+	}
+	q, txnID := store.Fold(text), ""
 	if m := similarRe.FindStringSubmatch(q); m != nil {
-		txnID, err := resolveTxn(ctx, st, m[1])
+		id, err := resolveTxn(ctx, st, m[1])
 		if err != nil {
 			return nil, err
 		}
-		if emb != nil {
-			return st.SearchSimilar(ctx, embed.Model, txnID)
-		}
-		docs, err := st.TxnDocs(ctx, txnID)
+		docs, err := st.TxnDocs(ctx, id)
 		if err != nil || len(docs) == 0 {
 			return nil, err
 		}
-		return st.SearchTrigram(ctx, docs[0].Doc, txnID)
+		q, txnID = docs[0].Doc, id
 	}
-	if emb == nil {
-		return st.SearchTrigram(ctx, q, "")
+	var trgm, vec []store.Hit
+	var err error
+	if mode != "vec" {
+		if trgm, err = st.SearchTrigram(ctx, q, txnID); err != nil {
+			return nil, err
+		}
+		if mode == "hybrid" { // noise never earns a rank: truncate before fusing
+			for len(trgm) > 0 && trgm[len(trgm)-1].Distance > trgmCutoff {
+				trgm = trgm[:len(trgm)-1]
+			}
+		}
+		for i := range trgm {
+			trgm[i].TrgmRank = i + 1
+		}
 	}
-	vecs, err := emb.Embed(ctx, []string{q})
-	if err != nil {
-		return nil, err
+	if mode != "trgm" && emb != nil {
+		if txnID != "" {
+			vec, err = st.SearchSimilar(ctx, embed.Model, txnID)
+		} else {
+			var vecs [][]float64
+			if vecs, err = emb.Embed(ctx, []string{q}); err == nil {
+				vec, err = st.SearchEmbeddings(ctx, embed.Model, vecs[0])
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		for i := range vec {
+			vec[i].VecRank = i + 1
+		}
 	}
-	return st.SearchEmbeddings(ctx, embed.Model, vecs[0])
+	switch mode {
+	case "trgm":
+		return trgm, nil
+	case "vec":
+		return vec, nil
+	}
+	return fuse(trgm, vec), nil
+}
+
+// fuse merges the two ranked lists with Reciprocal Rank Fusion, so the two
+// incomparable distance scales never meet: a hit in both lists always outranks
+// a single-list hit, and a tie keeps the trigram hit first because a literal
+// match is the one the user can see in the row. Vector-only hits farther than
+// vecCutoff are dropped, which is what "nada parecido" reads from.
+func fuse(trgm, vec []store.Hit) []store.Hit {
+	score, at := map[string]float64{}, map[string]int{}
+	var out []store.Hit
+	for _, list := range [][]store.Hit{trgm, vec} {
+		for _, h := range list {
+			rank := h.TrgmRank
+			if rank == 0 {
+				rank = h.VecRank
+			}
+			score[h.ID] += 1 / float64(rrfK+rank)
+			if i, ok := at[h.ID]; ok { // already in from the trigram list: keep its distance
+				out[i].VecRank = h.VecRank
+				continue
+			}
+			at[h.ID] = len(out)
+			out = append(out, h)
+		}
+	}
+	kept := out[:0]
+	for _, h := range out {
+		if h.TrgmRank > 0 || h.Distance <= vecCutoff {
+			kept = append(kept, h)
+		}
+	}
+	slices.SortStableFunc(kept, func(a, b store.Hit) int { return cmp.Compare(score[b.ID], score[a.ID]) })
+	if len(kept) > 5 {
+		kept = kept[:5]
+	}
+	return kept
 }

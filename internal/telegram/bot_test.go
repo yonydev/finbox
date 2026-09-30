@@ -1,13 +1,17 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"finbox/internal/embed"
 	"finbox/internal/extract"
 	"finbox/internal/messages"
 	"finbox/internal/pipeline"
@@ -697,5 +701,40 @@ func TestSearchTakesWholeLine(t *testing.T) {
 	b.HandleUpdate(ctx, textUpdate(74, "/search"))
 	if last = api.last(); last.text != messages.SearchHelp {
 		t.Fatalf("empty query reply = %q", last.text)
+	}
+}
+
+// TestSearchVecFailsBackToTrigram: OpenAI down must not cost the answer.
+func TestSearchVecFailsBackToTrigram(t *testing.T) {
+	st := store.NewTest(t)
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	var logs bytes.Buffer
+	api := &fakeAPI{}
+	b := NewBot(api, pipeline.Deps{Store: st, Blob: &memBlob{m: map[string][]byte{}}, Extractor: okExtractor{},
+		Loc: time.UTC, Log: slog.New(slog.NewTextHandler(&logs, nil)),
+		Embedder: &embed.Client{APIKey: "sk-test", BaseURL: srv.URL + "/"}}, []int64{111})
+
+	row, err := st.AddTransaction(ctx, store.NewTransaction{
+		OccurredOn: time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC),
+		Merchant:   "Walmart", AmountMinor: 12300, Currency: "MXN", Source: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vec := make([]float64, 512)
+	vec[0] = 1
+	doc := "walmart · super"
+	if err := st.UpsertEmbedding(ctx, row.ID, embed.Model, store.DocHash(doc), doc, vec); err != nil {
+		t.Fatal(err)
+	}
+	b.HandleUpdate(ctx, textUpdate(80, "/search walmart"))
+	if last := api.last(); !strings.Contains(last.text, row.ShortID) {
+		t.Fatalf("reply = %q, want the trigram hit", last.text)
+	}
+	if !strings.Contains(logs.String(), "search vec failed") {
+		t.Fatalf("log = %q", logs.String())
 	}
 }

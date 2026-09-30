@@ -174,7 +174,8 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 	if code := run([]string{"finbox", "reembed", "--dry-run"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar") {
+	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar") ||
+		!strings.Contains(out.String(), "0 productos por indexar") {
 		t.Fatalf("dry-run output:\n%s", out.String())
 	}
 	if hits, err := s.SearchTrigram(ctx, "walmart", ""); err != nil || len(hits) != 0 {
@@ -205,12 +206,17 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 	if hits[0]["short_id"] != txnID[:8] || hits[0]["distance"].(float64) >= 1 {
 		t.Fatalf("hit = %+v", hits[0])
 	}
-	out.Reset()
-	if code := run([]string{"finbox", "search", "--mode", "vec", "walmart"}, &out, &errb); code != 2 {
-		t.Fatalf("vec without a key: exit %d, want 2 (stderr %s)", code, errb.String())
+	if hits[0]["trgm_rank"].(float64) != 1 || hits[0]["vec_rank"].(float64) != 0 {
+		t.Fatalf("ranks = %+v", hits[0])
 	}
 	out.Reset()
-	errb.Reset()
+	for _, mode := range []string{"vec", "hybrid"} { // both spend an API call
+		if code := run([]string{"finbox", "search", "--mode", mode, "walmart"}, &out, &errb); code != 2 {
+			t.Fatalf("%s without a key: exit %d, want 2 (stderr %s)", mode, code, errb.String())
+		}
+		out.Reset()
+		errb.Reset()
+	}
 	if code := run([]string{"finbox", "search", "--mode", "trgm"}, &out, &errb); code != 2 {
 		t.Fatalf("empty query: exit %d, want 2", code)
 	}
@@ -223,7 +229,7 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "0 gastos indexados") {
+	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "0 vectores indexados") {
 		t.Fatalf("no-op reembed: exit %d, out %q", code, out.String())
 	}
 }

@@ -24,7 +24,7 @@ func NewTest(tb testing.TB) *Store {
 	if _, err := s.Migrate(ctx); err != nil {
 		tb.Fatal(err)
 	}
-	if _, err := s.pool.Exec(ctx, `truncate receipts, transactions, transaction_items, transaction_embeddings, edit_log, processed_updates cascade`); err != nil {
+	if _, err := s.pool.Exec(ctx, `truncate receipts, transactions, transaction_items, transaction_embeddings, item_embeddings, edit_log, processed_updates cascade`); err != nil {
 		tb.Fatal(err)
 	}
 	return s
