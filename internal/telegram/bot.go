@@ -222,7 +222,9 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 	chat, msgID := cb.Message.Chat.ID, cb.Message.MessageID
 	if action == "x" { // close: no receipt attached, handle before the lookup
 		if err := b.api.DeleteMessage(ctx, chat, msgID); err != nil {
-			// Telegram refuses deletes on messages older than 48h — collapse instead
+			// Telegram refuses deletes on messages older than 48h — collapse instead.
+			// editMessageText fails on a media message, so a re-sent receipt older
+			// than 48h simply stays put; nothing worse than a dead button.
 			b.edit(ctx, chat, msgID, messages.ListClosed, nil)
 		}
 		return true
@@ -663,7 +665,7 @@ func (b *Bot) sendReceipt(ctx context.Context, chat int64, txnID string) {
 		b.send(ctx, chat, messages.ReceiptGone)
 		return
 	}
-	if err := b.api.CopyMessage(ctx, chat, rec.TgChatID, rec.TgMessageID); err != nil {
+	if err := b.api.CopyMessage(ctx, chat, rec.TgChatID, rec.TgMessageID, closeKB); err != nil {
 		b.d.Log.Warn("copy receipt failed", "txn", txnID, "err", err)
 		b.send(ctx, chat, messages.ReceiptGone)
 	}

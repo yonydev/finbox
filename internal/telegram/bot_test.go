@@ -57,8 +57,8 @@ func (f *fakeAPI) GetFile(_ context.Context, id string) (File, error) {
 }
 
 // CopyMessage records fromChatID in chat and the copied message in msgID.
-func (f *fakeAPI) CopyMessage(_ context.Context, chat, fromChat, msgID int64) error {
-	f.calls = append(f.calls, call{method: "copy", chat: chat, msgID: msgID, text: fmt.Sprint(fromChat)})
+func (f *fakeAPI) CopyMessage(_ context.Context, chat, fromChat, msgID int64, kb *InlineKeyboard) error {
+	f.calls = append(f.calls, call{method: "copy", chat: chat, msgID: msgID, text: fmt.Sprint(fromChat), kb: kb})
 	return f.copyErr
 }
 func (f *fakeAPI) Download(context.Context, string) ([]byte, error)  { return f.file, nil }
@@ -804,6 +804,11 @@ func TestSearchShowsReceiptButton(t *testing.T) {
 	copies := callsOf(api, from, "copy")
 	if len(copies) != 1 || copies[0].chat != 111 || copies[0].msgID != rec.TgMessageID || copies[0].text != "111" {
 		t.Fatalf("copies = %+v, want the original message re-sent", copies)
+	}
+	ckb := copies[0].kb
+	if ckb == nil || len(*ckb) != 1 || len((*ckb)[0]) != 1 ||
+		(*ckb)[0][0] != (Button{Text: messages.BtnClose, CallbackData: "x|-"}) {
+		t.Fatalf("copy keyboard = %+v, want only the close button", ckb)
 	}
 	if len(callsOf(api, from, "answer")) != 1 {
 		t.Fatalf("callback not acked: %+v", api.calls[from:])

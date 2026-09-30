@@ -79,7 +79,7 @@ type API interface {
 	GetFile(ctx context.Context, fileID string) (File, error)
 	Download(ctx context.Context, filePath string) ([]byte, error)
 	SetMyCommands(ctx context.Context, cmds []BotCommand) error
-	CopyMessage(ctx context.Context, chatID, fromChatID, messageID int64) error
+	CopyMessage(ctx context.Context, chatID, fromChatID, messageID int64, kb *InlineKeyboard) error
 }
 
 type Client struct {
@@ -200,9 +200,12 @@ func (c *Client) Download(ctx context.Context, filePath string) ([]byte, error) 
 
 // CopyMessage re-sends an existing message into a chat without re-uploading
 // its file — Telegram keeps the original photo/document on its side.
-func (c *Client) CopyMessage(ctx context.Context, chatID, fromChatID, messageID int64) error {
-	return c.call(ctx, "copyMessage", map[string]any{
-		"chat_id": chatID, "from_chat_id": fromChatID, "message_id": messageID}, nil)
+func (c *Client) CopyMessage(ctx context.Context, chatID, fromChatID, messageID int64, kb *InlineKeyboard) error {
+	p := map[string]any{"chat_id": chatID, "from_chat_id": fromChatID, "message_id": messageID}
+	if kb != nil {
+		p["reply_markup"] = map[string]any{"inline_keyboard": *kb}
+	}
+	return c.call(ctx, "copyMessage", p, nil)
 }
 
 func (c *Client) SetMyCommands(ctx context.Context, cmds []BotCommand) error {
