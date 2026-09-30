@@ -709,6 +709,18 @@ func TestSearchTakesWholeLine(t *testing.T) {
 	if last = api.last(); last.text != messages.SearchHelp {
 		t.Fatalf("empty query reply = %q", last.text)
 	}
+
+	// Telegram allows 4096 chars: the query is capped once, so neither the echo
+	// nor the embedding call ever sees the whole thing.
+	long := strings.Repeat("a", 1000)
+	b.HandleUpdate(ctx, textUpdate(75, "/search "+long))
+	last = api.last()
+	if strings.Contains(last.text, long) {
+		t.Fatalf("uncapped query echoed: %q", last.text)
+	}
+	if !strings.Contains(last.text, strings.Repeat("a", 199)+"…") {
+		t.Fatalf("capped query not echoed: %q", last.text)
+	}
 }
 
 // TestSearchVecFailsBackToTrigram: OpenAI down must not cost the answer.

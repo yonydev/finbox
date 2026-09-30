@@ -6,6 +6,7 @@ import (
 
 	"finbox/internal/embed"
 	"finbox/internal/store"
+	"finbox/internal/validate"
 )
 
 // StaleDocs keeps the docs whose stored (model, doc_hash) no longer match, so
@@ -43,7 +44,9 @@ func WriteLines(ctx context.Context, emb *embed.Client, st *store.Store, txns []
 		if err != nil {
 			return n, err
 		}
-		line = store.Fold(line)
+		// The prompt asks for ≤25 words; cap it in case the model ignores that,
+		// so one long line cannot bloat the indexed doc.
+		line = validate.CapRunes(store.Fold(line), 200)
 		key := LineKey(d.Base)
 		if err := st.UpsertSearchLine(ctx, d.ID, key, line, emb.ChatModel); err != nil {
 			return n, err
