@@ -214,10 +214,10 @@ func (f *fakeOA) serve() *httptest.Server {
 }
 
 func TestLineKeyDeterministic(t *testing.T) {
-	if LineKey("a") != LineKey("a") || LineKey("a") == LineKey("b") {
-		t.Error("LineKey is not a function of the base doc alone")
+	if LineKey("a") == LineKey("b") {
+		t.Error("LineKey must depend on the base doc")
 	}
-	if LineKey("a") != store.DocHash(embed.LinePrompt+"\na") {
+	if LineKey("a") != store.DocHash(embed.LinePrompt+"\na") { // exact value = deterministic, prompt included
 		t.Error("the prompt must be part of the key")
 	}
 	if LineStale(store.TxnDoc{}) {
