@@ -1,11 +1,11 @@
 package command
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -231,7 +231,7 @@ const (
 	// ponytail: 0.59 sits in the 0.576-0.600 window measured 2026-09-29 on the prod dump
 	// after item vectors: every vec-only true hit is <= 0.575 (pan 0.575, luz->CFE 0.548),
 	// nonsense queries start at 0.601 (zzzzzz). One-hundredth margin each side; recalibrate
-	// from docs/search-eval.py columns + three nonsense queries after any model or doc
+	// from the eval's distance columns + three nonsense queries after any model or doc
 	// change, or when "nada parecido" fires on a query that should hit.
 	trgmCutoff = 0.65
 	vecCutoff  = 0.59
@@ -329,7 +329,7 @@ func fuse(trgm, vec []store.Hit) []store.Hit {
 			kept = append(kept, h)
 		}
 	}
-	sort.SliceStable(kept, func(i, j int) bool { return score[kept[i].ID] > score[kept[j].ID] })
+	slices.SortStableFunc(kept, func(a, b store.Hit) int { return cmp.Compare(score[b.ID], score[a.ID]) })
 	if len(kept) > 5 {
 		kept = kept[:5]
 	}
