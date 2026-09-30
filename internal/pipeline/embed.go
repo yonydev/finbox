@@ -16,6 +16,8 @@ func StaleDocs(docs []store.TxnDoc) []store.TxnDoc {
 
 // LineKey is the search-line cache key: the prompt is part of it, so editing
 // the prompt regenerates every line on the next reembed (≈100 calls, cents).
+// It hashes the folded Base, not the accented Pretty the model reads: the two
+// always change together, and Base is what the key has to track.
 func LineKey(base string) string { return store.DocHash(embed.LinePrompt + "\n" + base) }
 
 // LineStale reports whether d needs a new search line: none yet, or the
@@ -37,7 +39,7 @@ func WriteLines(ctx context.Context, emb *embed.Client, st *store.Store, txns []
 		if !LineStale(*d) {
 			continue
 		}
-		line, err := emb.SearchLine(ctx, d.Base)
+		line, err := emb.SearchLine(ctx, d.Pretty)
 		if err != nil {
 			return n, err
 		}

@@ -371,6 +371,11 @@ func TestTxnDocsWithLine(t *testing.T) {
 	if d.Base != d.Doc || d.Line != "" || d.HaveLineKey != "" {
 		t.Fatalf("unlined row: %+v", d)
 	}
+	// the model input keeps what the folded doc lost
+	if p := BuildPretty("Farmacias Benavides", "salud", "x", []string{"GODONITES PAÑAL MED 11 UN"}); p !=
+		"farmacias benavides · salud · x · godonites pañal med 11 un" {
+		t.Fatalf("BuildPretty = %q", p)
+	}
 	before := d.Hash
 	if err := s.UpsertSearchLine(ctx, row.ID, "k", "luz cfe", "m"); err != nil {
 		t.Fatal(err)

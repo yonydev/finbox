@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -169,6 +170,7 @@ func seedReceipt(t *testing.T, st *store.Store, sha, merchant string, day int, n
 type fakeOA struct {
 	t                 *testing.T
 	chat, emb, inputs int
+	lastChatBody      string
 	lastInput         string
 	line              string
 	chatStatus        int
@@ -180,6 +182,8 @@ func (f *fakeOA) serve() *httptest.Server {
 		switch r.URL.Path {
 		case "/chat/completions":
 			f.chat++
+			b, _ := io.ReadAll(r.Body)
+			f.lastChatBody = string(b)
 			if f.chatStatus != 0 {
 				w.WriteHeader(f.chatStatus)
 				return
@@ -272,9 +276,16 @@ func TestEmbedDocsWritesLinesOnce(t *testing.T) {
 		t.Fatalf("category edit: %d chat, %d embed, err %v", f.chat, f.emb, err)
 	}
 	// one line for the expense, none for the receipt lines: 1 chat, 3 embed inputs
-	items := seedReceipt(t, st, "sha-lines", "La Comer", 6, "Agua", "Pan bolillo")
+	items := seedReceipt(t, st, "sha-lines", "La Comer", 6, "Agua", "Pañal Med 11 un")
 	if n, err := EmbedTxn(ctx, d, items); err != nil || n != 3 || f.chat != 3 || f.inputs != 3 {
 		t.Fatalf("receipt: %d vectors, %d chat, %d inputs, err %v", n, f.chat, f.inputs, err)
+	}
+	// the model reads the ñ; the doc that gets embedded and trigram-matched has lost it
+	if !strings.Contains(f.lastChatBody, `pa\u00f1al med`) && !strings.Contains(f.lastChatBody, "pañal med") {
+		t.Fatalf("chat input lost its accents: %s", f.lastChatBody)
+	}
+	if !strings.Contains(f.lastInput, "panal med") {
+		t.Fatalf("embedded doc = %q", f.lastInput)
 	}
 	// an empty answer is cached like any other: nothing to add, never asked again
 	f.line = ""

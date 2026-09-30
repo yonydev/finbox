@@ -30,12 +30,26 @@ func Fold(s string) string {
 // receipt name when it differs, then item names, and a delivery phrase when the
 // ticket has an app fee line. No amounts, dates or ids.
 func BuildDoc(canon, cat, raw string, items []string) string {
-	folded := Fold(canon)
+	return buildDoc(Fold, canon, cat, raw, items)
+}
+
+// BuildPretty is BuildDoc without the accent stripping. Only the search line's
+// model input uses it: "panal" is honeycomb, "pañal" is a diaper, and the model
+// cannot tell which one a folded ticket meant.
+func BuildPretty(canon, cat, raw string, items []string) string {
+	return buildDoc(squash, canon, cat, raw, items)
+}
+
+// squash is Fold minus the replacer: lowercase and collapsed whitespace, accents kept.
+func squash(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
+
+func buildDoc(norm func(string) string, canon, cat, raw string, items []string) string {
+	folded := norm(canon)
 	parts := []string{folded}
 	if cat != "" {
-		parts = append(parts, Fold(category.Label(cat)))
+		parts = append(parts, norm(category.Label(cat)))
 	}
-	if r := Fold(raw); r != "" && r != folded {
+	if r := norm(raw); r != "" && r != folded {
 		parts = append(parts, r)
 	}
 	doc := strings.Join(parts, docSep)
@@ -44,7 +58,7 @@ func BuildDoc(canon, cat, raw string, items []string) string {
 		if n == maxDocItems {
 			break
 		}
-		f := Fold(it)
+		f := norm(it)
 		if f == "" || seen[f] {
 			continue
 		}
@@ -91,11 +105,15 @@ func vecLiteral(v []float64) string {
 // TxnDoc is one expense's current doc next to the (model, hash) that is
 // stored. It is also one receipt line; ID is then the item id.
 //
-// Base, Line and HaveLineKey are expense docs only (item docs leave them zero:
-// Base == "" is the contract LineStale reads): Base is the doc without the
-// search line, Line and HaveLineKey what search_lines stores; Doc is Base with
-// the stored Line appended.
-type TxnDoc struct{ ID, Doc, Hash, HaveModel, HaveHash, Base, Line, HaveLineKey string }
+// Base, Pretty, Line and HaveLineKey are expense docs only (item docs leave
+// them zero: Base == "" is the contract LineStale reads): Base is the doc
+// without the search line, Pretty the same text with its accents, which only
+// the search-line call reads, Line and HaveLineKey what search_lines stores;
+// Doc is Base with the stored Line appended.
+type TxnDoc struct {
+	ID, Doc, Hash, HaveModel, HaveHash string
+	Base, Pretty, Line, HaveLineKey    string
+}
 
 func (d TxnDoc) Stale(model string) bool { return d.HaveModel != model || d.HaveHash != d.Hash }
 
@@ -121,7 +139,7 @@ func (s *Store) TxnDocs(ctx context.Context, onlyID string) ([]TxnDoc, error) {
 			&d.HaveLineKey, &d.Line); err != nil {
 			return nil, err
 		}
-		d.Base = BuildDoc(canon, cat, raw, items)
+		d.Base, d.Pretty = BuildDoc(canon, cat, raw, items), BuildPretty(canon, cat, raw, items)
 		d.Doc = WithLine(d.Base, d.Line)
 		d.Hash = DocHash(d.Doc)
 		out = append(out, d)
