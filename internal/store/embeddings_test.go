@@ -30,7 +30,7 @@ func TestBuildDoc(t *testing.T) {
 			items: []string{"Pan bolillo"}, want: "la comer · super · pan bolillo"},
 		{name: "items dedup after fold", canon: "Uber", raw: "Uber",
 			items: []string{"Delivery Fee", "delivery  fee", "Service Fee"},
-			want:  "uber · delivery fee · service fee"},
+			want:  "uber · delivery fee · service fee · pedido a domicilio por app uber eats"},
 		{name: "20 item cap", canon: "x", raw: "x", items: long[:25], wantItems: 20},
 		{name: "500 rune cap", canon: "x", raw: "x", items: long, wantMaxRunes: 500},
 	}
@@ -326,5 +326,76 @@ func TestSearchEmbeddingsUnionItems(t *testing.T) {
 	}
 	if hits, err = s.SearchEmbeddings(ctx, model, unit(0)); err != nil || len(hits) != 5 {
 		t.Fatalf("%d hits, err %v", len(hits), err)
+	}
+}
+
+func TestBuildDocDeliveryRule(t *testing.T) {
+	const fee = "Delivery Fee (VAT included)"
+	tests := []struct{ name, cat, want string }{
+		{"restaurantes", "restaurantes", "pedido a domicilio por app uber eats · comida a domicilio"},
+		{"super", "super", "pedido a domicilio por app uber eats · super a domicilio"},
+		{"otros keeps the platform phrase alone", "otros", "pedido a domicilio por app uber eats"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := BuildDoc("Uber Eats", tc.cat, "Uber Eats", []string{"Tacos al pastor", fee})
+			if !strings.HasSuffix(doc, docSep+tc.want) {
+				t.Fatalf("BuildDoc = %q, want suffix %q", doc, tc.want)
+			}
+		})
+	}
+	// a ride and a dine-in tip are not deliveries: only "delivery fee" triggers the rule
+	for _, items := range [][]string{
+		{"Trip fare", "Booking Fee", "Uber One Credits"},
+		{"Enchiladas", "Propina"},
+	} {
+		if doc := BuildDoc("Uber", "restaurantes", "Uber", items); strings.Contains(doc, "domicilio") {
+			t.Errorf("BuildDoc(%v) = %q, want no delivery phrase", items, doc)
+		}
+	}
+}
+
+func TestTxnDocsWithLine(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	row := seedTxn(t, s, "CFE", 4)
+	fresh := func() TxnDoc {
+		t.Helper()
+		d, err := s.TxnDocs(ctx, row.ID)
+		if err != nil || len(d) != 1 {
+			t.Fatalf("%d docs, err %v", len(d), err)
+		}
+		return d[0]
+	}
+	d := fresh()
+	if d.Base != d.Doc || d.Line != "" || d.HaveLineKey != "" {
+		t.Fatalf("unlined row: %+v", d)
+	}
+	// the model input keeps what the folded doc lost
+	if p := BuildPretty("Farmacias Benavides", "salud", "x", []string{"GODONITES PAÑAL MED 11 UN"}); p !=
+		"farmacias benavides · salud · x · godonites pañal med 11 un" {
+		t.Fatalf("BuildPretty = %q", p)
+	}
+	before := d.Hash
+	if err := s.UpsertSearchLine(ctx, row.ID, "k", "luz cfe", "m"); err != nil {
+		t.Fatal(err)
+	}
+	d = fresh()
+	if d.Doc != d.Base+docSep+"luz cfe" || d.HaveLineKey != "k" || d.Hash == before {
+		t.Fatalf("lined row: %+v (hash was %s)", d, before)
+	}
+	if err := s.UpsertSearchLine(ctx, row.ID, "k2", "electricidad", "m2"); err != nil {
+		t.Fatal(err)
+	}
+	if d = fresh(); d.Line != "electricidad" || d.HaveLineKey != "k2" {
+		t.Fatalf("upsert did not replace: %+v", d)
+	}
+	if WithLine("a", "") != "a" {
+		t.Error(`WithLine("a","") must be "a"`)
+	}
+	// item docs carry no line: Base == "" is what LineStale reads
+	items, err := s.ItemDocs(ctx, seedItems(t, s, "sha-line", "La Comer", 5, "Agua"))
+	if err != nil || len(items) != 1 || items[0].Base != "" {
+		t.Fatalf("item docs = %+v err %v", items, err)
 	}
 }

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"finbox/internal/command"
 	"finbox/internal/embed"
@@ -78,22 +80,41 @@ func cmdReembed(argv []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	return withStore(stderr, false, func(e cliEnv) int {
-		txns, err := e.st.TxnDocs(e.ctx, "")
+		// withStore's 60 s fits one query, not ≈100 sequential chat calls on the
+		// first run; a child of e.ctx could not outlive it.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		txns, err := e.st.TxnDocs(ctx, "")
 		if err != nil {
 			return mapErr(stderr, false, err)
 		}
-		items, err := e.st.ItemDocs(e.ctx, "")
+		items, err := e.st.ItemDocs(ctx, "")
 		if err != nil {
 			return mapErr(stderr, false, err)
 		}
-		txns, items = pipeline.StaleDocs(txns), pipeline.StaleDocs(items)
+		// One literal turns search lines off: "" skips the calls AND the staleness
+		// they add, so a deploy with nothing else to do stays a no-op that needs no key.
+		chatModel := e.cfg.OpenAIModel
+		linesOn := chatModel != ""
+		var stale []store.TxnDoc
+		waiting := 0
+		for _, d := range txns {
+			needsLine := linesOn && pipeline.LineStale(d)
+			if needsLine {
+				waiting++
+			}
+			if needsLine || d.Stale(embed.Model) {
+				stale = append(stale, d)
+			}
+		}
+		txns, items = stale, pipeline.StaleDocs(items)
 		if *dryRun {
 			for _, list := range [][]store.TxnDoc{txns, items} {
 				for _, d := range list {
 					fmt.Fprintf(stdout, "%s · %s\n", d.ID[:8], d.Doc)
 				}
 			}
-			fmt.Fprintf(stdout, "%d gastos por indexar (dry-run, sin escribir)\n", len(txns))
+			fmt.Fprintf(stdout, "%d gastos por indexar (%d esperan línea; dry-run, sin escribir)\n", len(txns), waiting)
 			fmt.Fprintf(stdout, "%d productos por indexar (dry-run, sin escribir)\n", len(items))
 			return exitOK
 		}
@@ -105,8 +126,12 @@ func cmdReembed(argv []string, stdout, stderr io.Writer) int {
 			cliErr(stderr, false, "falta OPENAI_API_KEY")
 			return exitUsage
 		}
-		n, err := pipeline.EmbedDocs(e.ctx, &embed.Client{APIKey: e.cfg.OpenAIKey}, e.st, txns, items)
+		emb := &embed.Client{APIKey: e.cfg.OpenAIKey, ChatModel: chatModel}
+		n, err := pipeline.EmbedDocs(ctx, emb, e.st, txns, items)
 		if err != nil {
+			if n > 0 { // the vectors landed; only the search line failed
+				fmt.Fprintf(stdout, "%d vectores indexados\n", n)
+			}
 			return mapErr(stderr, false, err)
 		}
 		fmt.Fprintf(stdout, "%d vectores indexados\n", n)

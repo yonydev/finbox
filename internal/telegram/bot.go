@@ -604,13 +604,19 @@ func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {
 }
 
 // embed indexes a transaction for /search once its card is on screen.
-// ponytail: synchronous in the sequential poll loop — worst case one 10 s stall
-// of the next update; move to a goroutine with context.Background() if it shows
-// in the logs.
+// ponytail: synchronous in the sequential poll loop — ≈1.5 s typical (one chat
+// call for the search line plus one embed), 25 s in an outage; move to a
+// goroutine with context.Background() if it shows in the logs.
 func (b *Bot) embed(ctx context.Context, txnID string) {
-	if err := pipeline.EmbedTxn(ctx, b.d, txnID); err != nil {
-		b.d.Log.Warn("embed failed", "txn", txnID, "err", err)
+	n, err := pipeline.EmbedTxn(ctx, b.d, txnID)
+	if err == nil {
+		return
 	}
+	if n > 0 { // vectors are in; only the search line is missing, the next reembed retries it
+		b.d.Log.Warn("search line failed", "txn", txnID, "err", err)
+		return
+	}
+	b.d.Log.Warn("embed failed", "txn", txnID, "err", err)
 }
 
 func undoKB(txnID string) *InlineKeyboard {

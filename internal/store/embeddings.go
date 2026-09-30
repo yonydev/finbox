@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 
 	"finbox/internal/category"
@@ -26,14 +27,29 @@ func Fold(s string) string {
 }
 
 // BuildDoc is the text that gets embedded: merchant, category label, the raw
-// receipt name when it differs, then item names. No amounts, dates or ids.
+// receipt name when it differs, then item names, and a delivery phrase when the
+// ticket has an app fee line. No amounts, dates or ids.
 func BuildDoc(canon, cat, raw string, items []string) string {
-	folded := Fold(canon)
+	return buildDoc(Fold, canon, cat, raw, items)
+}
+
+// BuildPretty is BuildDoc without the accent stripping. Only the search line's
+// model input uses it: "panal" is honeycomb, "pañal" is a diaper, and the model
+// cannot tell which one a folded ticket meant.
+func BuildPretty(canon, cat, raw string, items []string) string {
+	return buildDoc(squash, canon, cat, raw, items)
+}
+
+// squash is Fold minus the replacer: lowercase and collapsed whitespace, accents kept.
+func squash(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
+
+func buildDoc(norm func(string) string, canon, cat, raw string, items []string) string {
+	folded := norm(canon)
 	parts := []string{folded}
 	if cat != "" {
-		parts = append(parts, Fold(category.Label(cat)))
+		parts = append(parts, norm(category.Label(cat)))
 	}
-	if r := Fold(raw); r != "" && r != folded {
+	if r := norm(raw); r != "" && r != folded {
 		parts = append(parts, r)
 	}
 	doc := strings.Join(parts, docSep)
@@ -42,7 +58,7 @@ func BuildDoc(canon, cat, raw string, items []string) string {
 		if n == maxDocItems {
 			break
 		}
-		f := Fold(it)
+		f := norm(it)
 		if f == "" || seen[f] {
 			continue
 		}
@@ -52,7 +68,27 @@ func BuildDoc(canon, cat, raw string, items []string) string {
 		}
 		doc, seen[f], n = next, true, n+1
 	}
+	// ponytail: every fee-line order in the corpus is Uber Eats (7/7, 2026-09-30); when Rappi/DiDi
+	// receipts appear, drop the platform name here and let the search line name it.
+	if slices.ContainsFunc(items, func(it string) bool { return strings.Contains(Fold(it), "delivery fee") }) {
+		doc += docSep + "pedido a domicilio por app uber eats"
+		switch cat {
+		case "restaurantes":
+			doc += docSep + "comida a domicilio"
+		case "super":
+			doc += docSep + "super a domicilio"
+		}
+	}
 	return doc
+}
+
+// WithLine appends the model-written search line to a base doc. It is appended
+// past maxDocRunes on purpose: the cap bounds the item list, not the line.
+func WithLine(base, line string) string {
+	if line == "" {
+		return base
+	}
+	return base + docSep + line
 }
 
 func DocHash(doc string) string {
@@ -68,7 +104,16 @@ func vecLiteral(v []float64) string {
 
 // TxnDoc is one expense's current doc next to the (model, hash) that is
 // stored. It is also one receipt line; ID is then the item id.
-type TxnDoc struct{ ID, Doc, Hash, HaveModel, HaveHash string }
+//
+// Base, Pretty, Line and HaveLineKey are expense docs only (item docs leave
+// them zero: Base == "" is the contract LineStale reads): Base is the doc
+// without the search line, Pretty the same text with its accents, which only
+// the search-line call reads, Line and HaveLineKey what search_lines stores;
+// Doc is Base with the stored Line appended.
+type TxnDoc struct {
+	ID, Doc, Hash, HaveModel, HaveHash string
+	Base, Pretty, Line, HaveLineKey    string
+}
 
 func (d TxnDoc) Stale(model string) bool { return d.HaveModel != model || d.HaveHash != d.Hash }
 
@@ -77,8 +122,9 @@ func (d TxnDoc) Stale(model string) bool { return d.HaveModel != model || d.Have
 func (s *Store) TxnDocs(ctx context.Context, onlyID string) ([]TxnDoc, error) {
 	rows, err := s.pool.Query(ctx, `select t.id, coalesce(nullif(t.merchant_canon,''),t.merchant), coalesce(t.category,''), t.merchant,
 		coalesce((select array_agg(i.name order by i.position) from transaction_items i where i.transaction_id=t.id),'{}'),
-		coalesce(e.model,''), coalesce(e.doc_hash,'')
+		coalesce(e.model,''), coalesce(e.doc_hash,''), coalesce(l.doc_hash,''), coalesce(l.line,'')
 		from transactions t left join transaction_embeddings e on e.transaction_id=t.id
+		left join search_lines l on l.transaction_id=t.id
 		where t.voided_at is null and (nullif($1,'')::uuid is null or t.id=nullif($1,'')::uuid)`, onlyID)
 	if err != nil {
 		return nil, err
@@ -89,14 +135,26 @@ func (s *Store) TxnDocs(ctx context.Context, onlyID string) ([]TxnDoc, error) {
 		var d TxnDoc
 		var canon, cat, raw string
 		var items []string
-		if err := rows.Scan(&d.ID, &canon, &cat, &raw, &items, &d.HaveModel, &d.HaveHash); err != nil {
+		if err := rows.Scan(&d.ID, &canon, &cat, &raw, &items, &d.HaveModel, &d.HaveHash,
+			&d.HaveLineKey, &d.Line); err != nil {
 			return nil, err
 		}
-		d.Doc = BuildDoc(canon, cat, raw, items)
+		d.Base, d.Pretty = BuildDoc(canon, cat, raw, items), BuildPretty(canon, cat, raw, items)
+		d.Doc = WithLine(d.Base, d.Line)
 		d.Hash = DocHash(d.Doc)
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+// UpsertSearchLine stores one expense's search line under the cache key that
+// covers the prompt and the base doc.
+func (s *Store) UpsertSearchLine(ctx context.Context, txnID, key, line, model string) error {
+	_, err := s.pool.Exec(ctx, `insert into search_lines (transaction_id, doc_hash, line, model)
+		values ($1,$2,$3,$4)
+		on conflict (transaction_id) do update set doc_hash=excluded.doc_hash, line=excluded.line,
+			model=excluded.model, created_at=now()`, txnID, key, line, model)
+	return err
 }
 
 func (s *Store) UpsertEmbedding(ctx context.Context, txnID, model, hash, doc string, vec []float64) error {
