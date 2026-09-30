@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"finbox/internal/embed"
 	"finbox/internal/store"
@@ -362,5 +363,36 @@ func TestEmbedDocsDegradesWithoutLine(t *testing.T) {
 	}
 	if only[0].Doc != only[0].Base {
 		t.Fatalf("lines off must leave the base doc: %+v", only[0])
+	}
+}
+
+// TestWriteLinesCapsLongLine: the prompt asks for ≤25 words, the model need
+// not obey, and an unbounded line would bloat the indexed doc.
+func TestWriteLinesCapsLongLine(t *testing.T) {
+	st := store.NewTest(t)
+	ctx := context.Background()
+	f := &fakeOA{t: t, line: strings.Repeat("luz ", 250)} // 1000 chars
+	srv := f.serve()
+	defer srv.Close()
+	emb := &embed.Client{APIKey: "sk-test", BaseURL: srv.URL + "/", ChatModel: "gpt-test"}
+	row, err := st.AddTransaction(ctx, store.NewTransaction{
+		OccurredOn: time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC),
+		Merchant:   "CFE", AmountMinor: 100, Currency: "MXN", Source: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err := st.TxnDocs(ctx, row.ID)
+	if err != nil || len(docs) != 1 {
+		t.Fatalf("%d docs, err %v", len(docs), err)
+	}
+	if n, err := WriteLines(ctx, emb, st, docs); n != 1 || err != nil {
+		t.Fatalf("WriteLines: %d, err %v", n, err)
+	}
+	stored, err := st.TxnDocs(ctx, row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := utf8.RuneCountInString(stored[0].Line); n > 200 {
+		t.Fatalf("stored line = %d runes, want ≤200", n)
 	}
 }

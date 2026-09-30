@@ -584,6 +584,9 @@ func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {
 		b.send(ctx, chat, messages.SearchHelp)
 		return
 	}
+	// Telegram allows 4096 chars; capped once here so the echo and the search
+	// use the same text and the embedding call stays bounded.
+	line = validate.CapRunes(line, 200)
 	// Hybrid holds every cutoff, so there is nothing to trim here: an empty
 	// result is "nada parecido".
 	hits, err := command.Search(ctx, b.d.Store, b.d.Embedder, "hybrid", line)
