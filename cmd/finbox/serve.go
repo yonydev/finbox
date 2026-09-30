@@ -10,6 +10,7 @@ import (
 
 	"finbox/internal/blob/fs"
 	"finbox/internal/config"
+	"finbox/internal/embed"
 	"finbox/internal/extract/openai"
 	"finbox/internal/pipeline"
 	"finbox/internal/store"
@@ -50,11 +51,14 @@ func cmdServe(_ []string, stdout, stderr io.Writer) int {
 
 	api := telegram.NewClient(cfg.BotToken)
 	d := pipeline.Deps{Store: st, Blob: fs.New(cfg.BlobDir),
-		Extractor: openai.New(cfg.OpenAIKey, cfg.OpenAIModel), Loc: cfg.Loc, Log: log}
+		Extractor: openai.New(cfg.OpenAIKey, cfg.OpenAIModel),
+		Embedder:  &embed.Client{APIKey: cfg.OpenAIKey},
+		Loc:       cfg.Loc, Log: log}
 	bot := telegram.NewBot(api, d, cfg.AllowedUserIDs)
 
 	if err := api.SetMyCommands(ctx, []telegram.BotCommand{
 		{Command: "add", Description: "registra gasto sin ticket"},
+		{Command: "search", Description: "busca gastos por lo que compraste"},
 		{Command: "list", Description: "últimos gastos"},
 		{Command: "month", Description: "total del mes"},
 		{Command: "pending", Description: "tickets pendientes"},

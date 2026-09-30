@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -214,5 +215,38 @@ func TestAddWithCategoryAndCanon(t *testing.T) {
 	}
 	if _, err := Add(context.Background(), s, AddOpts{Total: "500", Merchant: "X", Category: "comida"}, now, time.UTC); err == nil {
 		t.Error("unknown category must be rejected")
+	}
+}
+
+func TestSearchParecidoA(t *testing.T) {
+	s, _, txnID := seed(t) // "Tacos"
+	ctx := context.Background()
+	other, err := s.AddTransaction(ctx, store.NewTransaction{
+		OccurredOn: time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC),
+		Merchant:   "Taqueria El Paisa", AmountMinor: 9000, Currency: "MXN", Source: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vec := make([]float64, 512)
+	vec[0] = 1
+	for id, doc := range map[string]string{txnID: "tacos · restaurantes", other.ID: "taqueria el paisa · restaurantes"} {
+		if err := s.UpsertEmbedding(ctx, id, "m", store.DocHash(doc), doc, vec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// nil embedder: the trigram baseline, so no network anywhere in this test
+	hits, err := Search(ctx, s, nil, "PARECIDO A "+txnID[:8])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].ID != other.ID {
+		t.Fatalf("hits = %+v, want only %s", hits, other.ShortID)
+	}
+	if _, err := Search(ctx, s, nil, "parecido a 00000000"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("unknown id: err = %v, want ErrNotFound", err)
+	}
+	// plain text is not an id lookup: both rows are candidates
+	if hits, err = Search(ctx, s, nil, "Tacos"); err != nil || len(hits) != 2 || hits[0].ID != txnID {
+		t.Fatalf("plain query: %+v err %v", hits, err)
 	}
 }

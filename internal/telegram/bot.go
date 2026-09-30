@@ -266,7 +266,7 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 			return true
 		}
 		edits := pipeline.EditsFromRaw(rec.ExtractionRaw, v, "reply")
-		_, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
+		txnID, ok, err := b.d.Store.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
 			OccurredOn: v.OccurredOn, Merchant: v.Merchant, MerchantCanon: v.MerchantCanon, AmountMinor: v.AmountMinor,
 			Currency: v.Currency, Source: "receipt", Category: v.Category, CategorySource: v.CategorySource,
 			Items: itemsToNew(v), Edits: edits,
@@ -302,6 +302,7 @@ func (b *Bot) handleCallback(ctx context.Context, updateID int64, cb *CallbackQu
 			return true
 		}
 		b.edit(ctx, chat, msgID, SavedCard(short, v, len(edits) > 0), nil)
+		b.embed(ctx, txnID)
 		return false // completion stamped inside ConfirmReceipt's tx
 	case "d":
 		ok, err := b.d.Store.DiscardReceipt(ctx, rec.ID, updateID)
@@ -413,6 +414,7 @@ func (b *Bot) handleReply(ctx context.Context, m *Message) bool {
 			v.Warnings = nil
 			b.edit(ctx, chat, rec.TgCardMessageID, SavedCard(short, v, true), nil)
 		}
+		b.embed(ctx, row.ID)
 	} else {
 		res, err := pipeline.Amend(ctx, b.d, rec.ID, f, now)
 		if err != nil {
@@ -451,13 +453,16 @@ func (b *Bot) handleText(ctx context.Context, m *Message) {
 	if len(fields) > 1 {
 		arg = fields[1]
 	}
+	// the whole line, not fields[1]: a merchant and a query are several words
+	line := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(m.Text), fields[0]))
 	now := time.Now()
 	switch cmd {
 	case "/start", "/help":
 		b.send(ctx, chat, messages.HelpText)
 	case "/add":
-		// the whole line, not fields[1]: the merchant is several words
-		b.handleAdd(ctx, chat, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(m.Text), fields[0])), now)
+		b.handleAdd(ctx, chat, line, now)
+	case "/search":
+		b.handleSearch(ctx, chat, line)
 	case "/list":
 		limit := 10
 		capped := false
@@ -567,6 +572,53 @@ func (b *Bot) handleAdd(ctx context.Context, chat int64, text string, now time.T
 			dup.OccurredOn.Format("02/01"), money.Format(dup.AmountMinor, dup.Currency)))
 	}
 	b.sendKB(ctx, chat, SavedCard(row.ShortID, v, false)+"\n\n"+messages.AddSavedHint, undoKB(row.ID))
+	b.embed(ctx, row.ID)
+}
+
+// searchCutoff trims the sorted trigram hits from the tail: anything farther is
+// "nada parecido". On the 2026-09-29 eval true hits sit at 0.0–0.45 and noise at
+// 0.5–0.9; 0.65 drops the noise tail and costs a few long-vs-long "parecido a" hits.
+// ponytail: recalibrate from the eval's worst-expected vs best-non-expected distance
+// columns after any BuildDoc change, or when "nada parecido" fires on a query that should hit.
+const searchCutoff = 0.65
+
+func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {
+	if line == "" {
+		b.send(ctx, chat, messages.SearchHelp)
+		return
+	}
+	// Trigrams, not vectors: on the 2026-09-29 eval (28 queries, prod dump) vectors
+	// scored recall@5 0.69–0.71 vs trigram 0.65, under the 0.80 / +0.15 bar. The
+	// Embedder still indexes doc + vector on save so `finbox search --mode vec`
+	// keeps measuring; flip the nil here when a doc format clears the bar.
+	hits, err := command.Search(ctx, b.d.Store, nil, line)
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrAmbiguous) {
+		b.send(ctx, chat, fmt.Sprintf(messages.SearchNoSuchExpense,
+			html.EscapeString(strings.TrimPrefix(store.Fold(line), "parecido a "))))
+		return
+	}
+	if err != nil {
+		b.send(ctx, chat, html.EscapeString(err.Error()))
+		return
+	}
+	for len(hits) > 0 && hits[len(hits)-1].Distance > searchCutoff {
+		hits = hits[:len(hits)-1]
+	}
+	if len(hits) == 0 {
+		b.sendKB(ctx, chat, fmt.Sprintf(messages.SearchNothing, html.EscapeString(line)), closeKB)
+		return
+	}
+	b.sendKB(ctx, chat, fmt.Sprintf(messages.SearchHeader, html.EscapeString(line))+"\n"+SearchTable(hits), closeKB)
+}
+
+// embed indexes a transaction for /search once its card is on screen.
+// ponytail: synchronous in the sequential poll loop — worst case one 10 s stall
+// of the next update; move to a goroutine with context.Background() if it shows
+// in the logs.
+func (b *Bot) embed(ctx context.Context, txnID string) {
+	if err := pipeline.EmbedTxn(ctx, b.d, txnID); err != nil {
+		b.d.Log.Warn("embed failed", "txn", txnID, "err", err)
+	}
 }
 
 func undoKB(txnID string) *InlineKeyboard {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"finbox/internal/extract"
+	"finbox/internal/messages"
 	"finbox/internal/pipeline"
 	"finbox/internal/store"
 )
@@ -637,5 +638,64 @@ func TestReplyCorrectsManualCard(t *testing.T) {
 		if !strings.Contains(recard.text, want) {
 			t.Errorf("re-rendered card missing %q:\n%s", want, recard.text)
 		}
+	}
+}
+
+func TestSearchTakesWholeLine(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{}) // Embedder nil: the trigram baseline, no network
+	ctx := context.Background()
+	vec := make([]float64, 512)
+	vec[0] = 1
+	seed := func(merchant, doc string, day int) store.TxnRow {
+		t.Helper()
+		row, err := st.AddTransaction(ctx, store.NewTransaction{
+			OccurredOn: time.Date(2026, 9, day, 0, 0, 0, 0, time.UTC),
+			Merchant:   merchant, AmountMinor: 12300, Currency: "MXN", Source: "manual"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.UpsertEmbedding(ctx, row.ID, "m", store.DocHash(doc), doc, vec); err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	dulces := seed("Oxxo", "oxxo · super · chocolate kinder bueno · sabritas", 3)
+	gemelo := seed("Oxxo Centro", "oxxo · super · chocolate kinder huevo", 4)
+	seed("Uber", "uber · transporte", 2)
+
+	b.HandleUpdate(ctx, textUpdate(70, "/search kinder bueno"))
+	last := api.last()
+	if !strings.Contains(last.text, "<pre>") || !strings.Contains(last.text, dulces.ShortID) {
+		t.Fatalf("search reply = %q", last.text)
+	}
+	if strings.Contains(last.text, "TOTAL") { // a sum of five retrieved rows would be a lie
+		t.Fatalf("search table must not sum: %q", last.text)
+	}
+	if !strings.Contains(last.text, "«kinder bueno»") || last.kb != closeKB {
+		t.Fatalf("header/keyboard = %q %+v", last.text, last.kb)
+	}
+
+	b.HandleUpdate(ctx, textUpdate(71, "/search zzzzzz"))
+	if last = api.last(); !strings.Contains(last.text, "nada parecido a «zzzzzz»") {
+		t.Fatalf("no-hit reply = %q", last.text)
+	}
+
+	b.HandleUpdate(ctx, textUpdate(72, "/search parecido a "+dulces.ShortID))
+	_, table, _ := strings.Cut(api.last().text, "<pre>") // the header echoes the query, ids only in the table
+	if !strings.Contains(table, gemelo.ShortID) || strings.Contains(table, dulces.ShortID) {
+		t.Fatalf("parecido a must answer with the OTHER rows: %q", table)
+	}
+	if strings.Contains(table, "Uber") { // too far: the cutoff trimmed it
+		t.Fatalf("cutoff not applied: %q", table)
+	}
+
+	b.HandleUpdate(ctx, textUpdate(73, "/search parecido a 00000000"))
+	if last = api.last(); last.text != fmt.Sprintf(messages.SearchNoSuchExpense, "00000000") {
+		t.Fatalf("bad id reply = %q", last.text)
+	}
+
+	b.HandleUpdate(ctx, textUpdate(74, "/search"))
+	if last = api.last(); last.text != messages.SearchHelp {
+		t.Fatalf("empty query reply = %q", last.text)
 	}
 }
