@@ -813,3 +813,33 @@ func TestSearchShowsReceiptButton(t *testing.T) {
 		t.Fatalf("manual row must not copy anything: %+v", got)
 	}
 }
+
+// TestReceiptButtonNeverLeavesItsChat: the ticket lives in the chat that sent
+// it — a tap from any other chat gets nothing back.
+func TestReceiptButtonNeverLeavesItsChat(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	ctx := context.Background()
+	rec, err := st.CreateReceipt(ctx, store.CreateReceiptParams{
+		BlobKey: "k", BlobSHA256: "sha-other-chat", TgMessageID: 777, TgChatID: 222})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Transition(ctx, rec.ID, "pending", "awaiting_confirm", ""); err != nil {
+		t.Fatal(err)
+	}
+	txnID, ok, err := st.ConfirmReceipt(ctx, rec.ID, store.NewTransaction{
+		OccurredOn: time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC),
+		Merchant:   "Walmart", AmountMinor: 12300, Currency: "MXN", Source: "receipt"}, 800, nil)
+	if err != nil || !ok {
+		t.Fatalf("confirm = %v %v", ok, err)
+	}
+
+	from := len(api.calls)
+	b.HandleUpdate(ctx, cbUpdate(801, "t|"+txnID, 999)) // cbUpdate speaks for chat 111
+	if last := api.last(); last.chat != 111 || last.text != messages.ReceiptGone {
+		t.Fatalf("reply = %+v, want ReceiptGone to the asking chat", last)
+	}
+	if got := callsOf(api, from, "copy"); len(got) != 0 {
+		t.Fatalf("copied another chat's receipt: %+v", got)
+	}
+}
