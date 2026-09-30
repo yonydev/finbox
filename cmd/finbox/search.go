@@ -10,6 +10,7 @@ import (
 	"finbox/internal/command"
 	"finbox/internal/embed"
 	"finbox/internal/money"
+	"finbox/internal/pipeline"
 	"finbox/internal/store"
 )
 
@@ -77,46 +78,38 @@ func cmdReembed(argv []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	return withStore(stderr, false, func(e cliEnv) int {
-		docs, err := e.st.TxnDocs(e.ctx, "")
+		txns, err := e.st.TxnDocs(e.ctx, "")
 		if err != nil {
 			return mapErr(stderr, false, err)
 		}
-		var stale []store.TxnDoc
-		for _, d := range docs {
-			if d.Stale(embed.Model) {
-				stale = append(stale, d)
-			}
+		items, err := e.st.ItemDocs(e.ctx, "")
+		if err != nil {
+			return mapErr(stderr, false, err)
 		}
+		txns, items = pipeline.StaleDocs(txns), pipeline.StaleDocs(items)
 		if *dryRun {
-			for _, d := range stale {
-				fmt.Fprintf(stdout, "%s · %s\n", d.ID[:8], d.Doc)
+			for _, list := range [][]store.TxnDoc{txns, items} {
+				for _, d := range list {
+					fmt.Fprintf(stdout, "%s · %s\n", d.ID[:8], d.Doc)
+				}
 			}
-			fmt.Fprintf(stdout, "%d gastos por indexar (dry-run, sin escribir)\n", len(stale))
+			fmt.Fprintf(stdout, "%d gastos por indexar (dry-run, sin escribir)\n", len(txns))
+			fmt.Fprintf(stdout, "%d productos por indexar (dry-run, sin escribir)\n", len(items))
 			return exitOK
 		}
-		if len(stale) == 0 { // the usual deploy: nothing to do, no key needed, no call
-			fmt.Fprintln(stdout, "0 gastos indexados")
+		if len(txns)+len(items) == 0 { // the usual deploy: nothing to do, no key needed, no call
+			fmt.Fprintln(stdout, "0 vectores indexados")
 			return exitOK
 		}
 		if e.cfg.OpenAIKey == "" {
 			cliErr(stderr, false, "falta OPENAI_API_KEY")
 			return exitUsage
 		}
-		texts := make([]string, len(stale))
-		for i, d := range stale {
-			texts[i] = d.Doc
-		}
-		// ponytail: one call; the API takes 2048 inputs per request, chunk when the corpus passes that.
-		vecs, err := (&embed.Client{APIKey: e.cfg.OpenAIKey}).Embed(e.ctx, texts)
+		n, err := pipeline.EmbedDocs(e.ctx, &embed.Client{APIKey: e.cfg.OpenAIKey}, e.st, txns, items)
 		if err != nil {
 			return mapErr(stderr, false, err)
 		}
-		for i, d := range stale {
-			if err := e.st.UpsertEmbedding(e.ctx, d.ID, embed.Model, d.Hash, d.Doc, vecs[i]); err != nil {
-				return mapErr(stderr, false, err)
-			}
-		}
-		fmt.Fprintf(stdout, "%d gastos indexados\n", len(stale))
+		fmt.Fprintf(stdout, "%d vectores indexados\n", n)
 		return exitOK
 	})
 }

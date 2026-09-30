@@ -174,7 +174,8 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 	if code := run([]string{"finbox", "reembed", "--dry-run"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar") {
+	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar") ||
+		!strings.Contains(out.String(), "0 productos por indexar") {
 		t.Fatalf("dry-run output:\n%s", out.String())
 	}
 	if hits, err := s.SearchTrigram(ctx, "walmart", ""); err != nil || len(hits) != 0 {
@@ -228,7 +229,7 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "0 gastos indexados") {
+	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "0 vectores indexados") {
 		t.Fatalf("no-op reembed: exit %d, out %q", code, out.String())
 	}
 }

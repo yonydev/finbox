@@ -66,7 +66,8 @@ func vecLiteral(v []float64) string {
 	return strings.Join(strings.Fields(fmt.Sprint(v)), ",")
 }
 
-// TxnDoc is one expense's current doc next to the (model, hash) that is stored.
+// TxnDoc is one expense's current doc next to the (model, hash) that is
+// stored. It is also one receipt line; ID is then the item id.
 type TxnDoc struct{ ID, Doc, Hash, HaveModel, HaveHash string }
 
 func (d TxnDoc) Stale(model string) bool { return d.HaveModel != model || d.HaveHash != d.Hash }
@@ -107,6 +108,47 @@ func (s *Store) UpsertEmbedding(ctx context.Context, txnID, model, hash, doc str
 	return err
 }
 
+// ItemDocs builds the doc of every receipt line of every active expense, or of
+// onlyTxnID's lines alone. The doc is the bare item name: a merchant prefix
+// would pull every line of a ticket back toward the merchant, which is the
+// dilution the per-item vector exists to remove.
+func (s *Store) ItemDocs(ctx context.Context, onlyTxnID string) ([]TxnDoc, error) {
+	rows, err := s.pool.Query(ctx, `select i.id, i.name, coalesce(e.model,''), coalesce(e.doc_hash,'')
+		from transaction_items i join transactions t on t.id = i.transaction_id
+		left join item_embeddings e on e.item_id = i.id
+		where t.voided_at is null and (nullif($1,'')::uuid is null or t.id=nullif($1,'')::uuid)
+		order by t.occurred_on, i.position`, onlyTxnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TxnDoc
+	for rows.Next() {
+		var d TxnDoc
+		var name string
+		if err := rows.Scan(&d.ID, &name, &d.HaveModel, &d.HaveHash); err != nil {
+			return nil, err
+		}
+		if d.Doc = Fold(name); d.Doc == "" {
+			continue
+		}
+		d.Hash = DocHash(d.Doc)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// UpsertItemEmbedding stores one receipt line's vector. The select fills
+// transaction_id, so the search query never joins transaction_items.
+func (s *Store) UpsertItemEmbedding(ctx context.Context, itemID, model, hash, doc string, vec []float64) error {
+	_, err := s.pool.Exec(ctx, `insert into item_embeddings (item_id, transaction_id, model, doc_hash, doc, embedding)
+		select id, transaction_id, $2, $3, $4, $5::vector from transaction_items where id=$1
+		on conflict (item_id) do update set model=excluded.model, doc_hash=excluded.doc_hash,
+			doc=excluded.doc, embedding=excluded.embedding, created_at=now()`,
+		itemID, model, hash, doc, vecLiteral(vec))
+	return err
+}
+
 // Hit is a search result; Distance is lower-is-closer in every mode (cosine
 // distance for vectors, 1 - word_similarity for trigrams), and in hybrid it is
 // the distance of the list that found the hit, trigram preferred. TrgmRank and
@@ -119,11 +161,19 @@ type Hit struct {
 }
 
 // vecSearchSQL takes the query vector from a cte so both callers share the
-// ranking, the filters and the limit.
-const vecSearchSQL = `with q as (%s)
-	select ` + txnRowCols + `, e.embedding <=> q.v as distance
-	from q, transaction_embeddings e join transactions t on t.id = e.transaction_id
-	where e.model = $1 and t.voided_at is null and (nullif($2,'')::uuid is null or t.id <> nullif($2,'')::uuid)
+// ranking, the filters and the limit. An expense is as close as its closest
+// vector — its own or one of its receipt lines — so a long ticket stops
+// diluting the item the query names; min() groups the union back to one row
+// per expense.
+const vecSearchSQL = `with q as (%s), d as (
+		select e.transaction_id, min(e.embedding <=> q.v) as distance
+		from q, (select transaction_id, embedding from transaction_embeddings where model = $1
+		         union all
+		         select transaction_id, embedding from item_embeddings where model = $1) e
+		group by e.transaction_id)
+	select ` + txnRowCols + `, d.distance
+	from d join transactions t on t.id = d.transaction_id
+	where t.voided_at is null and (nullif($2,'')::uuid is null or t.id <> nullif($2,'')::uuid)
 	order by distance, t.occurred_on desc limit 5`
 
 func (s *Store) SearchEmbeddings(ctx context.Context, model string, vec []float64) ([]Hit, error) {

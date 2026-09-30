@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -221,5 +222,109 @@ func TestTxnDocsStale(t *testing.T) {
 	d := fresh()
 	if !d.Stale(model) || d.Doc != "la comer · super" {
 		t.Fatalf("category edit: %+v", d)
+	}
+}
+
+// seedItems confirms a receipt with the given item names and returns the txn.
+func seedItems(t *testing.T, s *Store, sha, merchant string, day int, items ...string) string {
+	t.Helper()
+	ctx := context.Background()
+	r, err := s.CreateReceipt(ctx, CreateReceiptParams{BlobKey: "k" + sha, BlobSHA256: sha, TgMessageID: int64(day), TgChatID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Transition(ctx, r.ID, "pending", "awaiting_confirm", "")
+	var lines []NewItem
+	for i, name := range items {
+		lines = append(lines, NewItem{Position: i, Name: name})
+	}
+	txnID, ok, err := s.ConfirmReceipt(ctx, r.ID, NewTransaction{
+		OccurredOn: time.Date(2026, 9, day, 0, 0, 0, 0, time.UTC),
+		Merchant:   merchant, AmountMinor: 10000, Currency: "MXN", Source: "receipt", Items: lines}, 0, nil)
+	if err != nil || !ok {
+		t.Fatalf("confirm: %v", err)
+	}
+	return txnID
+}
+
+func TestItemDocsStale(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	const model = "test-model"
+	txnID := seedItems(t, s, "sha-items", "La Comer", 2, "Agua Peñafiel 400 M", "  ")
+	docs, err := s.ItemDocs(ctx, txnID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 1 || docs[0].Doc != "agua penafiel 400 m" || !docs[0].Stale(model) {
+		t.Fatalf("item docs = %+v (a blank name has nothing to embed)", docs)
+	}
+	if err := s.UpsertItemEmbedding(ctx, docs[0].ID, model, docs[0].Hash, docs[0].Doc, unit(0)); err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.ItemDocs(ctx, "")
+	if err != nil || len(again) != 1 || again[0].Stale(model) {
+		t.Fatalf("after upsert: %+v err %v", again, err)
+	}
+	if !again[0].Stale("otro-model") {
+		t.Fatal("a model change must re-embed the items too")
+	}
+	other := seedItems(t, s, "sha-items2", "Oxxo", 3, "Café")
+	if all, err := s.ItemDocs(ctx, ""); err != nil || len(all) != 2 {
+		t.Fatalf("ItemDocs(\"\") = %+v err %v", all, err)
+	}
+	if _, err := s.VoidTransaction(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if all, err := s.ItemDocs(ctx, ""); err != nil || len(all) != 1 || all[0].ID != docs[0].ID {
+		t.Fatalf("voided items still listed: %+v err %v", all, err)
+	}
+}
+
+func TestSearchEmbeddingsUnionItems(t *testing.T) {
+	s := NewTest(t)
+	ctx := context.Background()
+	const model = "test-model"
+	a := seedItems(t, s, "sha-union-a", "La Comer", 3, "Agua")
+	b := seedItems(t, s, "sha-union-b", "Oxxo", 2, "Café")
+	items, err := s.ItemDocs(ctx, a)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("%d item docs, err %v", len(items), err)
+	}
+	// a's expense vector is far from the query, its item vector is the query
+	if err := s.UpsertEmbedding(ctx, a, model, "h", "la comer", unit(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertItemEmbedding(ctx, items[0].ID, model, items[0].Hash, items[0].Doc, unit(0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertEmbedding(ctx, b, model, "h", "oxxo", unit(2)); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := s.SearchEmbeddings(ctx, model, unit(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 2 || hits[0].ID != a || hits[0].Distance != 0 {
+		t.Fatalf("hits = %v (%.3f), want a first at 0 through its item", ids(hits), hits[0].Distance)
+	}
+	// wrong model: the item vector is invisible too
+	if none, err := s.SearchEmbeddings(ctx, "otro-model", unit(0)); err != nil || len(none) != 0 {
+		t.Fatalf("wrong model: %d hits, err %v", len(none), err)
+	}
+	// SearchSimilar probes with a's expense vector, and a's own item vector
+	// goes out with it
+	sim, err := s.SearchSimilar(ctx, model, a)
+	if err != nil || len(sim) != 1 || sim[0].ID != b {
+		t.Fatalf("SearchSimilar = %v err %v", ids(sim), err)
+	}
+	for i := 4; i < 9; i++ { // six indexed expenses, still five rows
+		id := seedItems(t, s, fmt.Sprintf("sha-union-%d", i), "Extra", i, "Algo")
+		if err := s.UpsertEmbedding(ctx, id, model, "h", "extra", unit(0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hits, err = s.SearchEmbeddings(ctx, model, unit(0)); err != nil || len(hits) != 5 {
+		t.Fatalf("%d hits, err %v", len(hits), err)
 	}
 }
