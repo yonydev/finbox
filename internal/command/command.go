@@ -228,10 +228,13 @@ var similarRe = regexp.MustCompile(`^parecido a ([0-9a-f]{8}|[0-9a-f-]{36})$`)
 const (
 	rrfK = 60
 	// Hybrid-only cutoffs; single modes return the raw top-5 for the eval.
-	// ponytail: provisional; recalibrate from the eval's worst-expected / best-non-expected
-	// columns after any model or doc change (vecCutoff after 0006 especially: item docs are short).
+	// ponytail: 0.59 sits in the 0.576-0.600 window measured 2026-09-29 on the prod dump
+	// after item vectors: every vec-only true hit is <= 0.575 (pan 0.575, luz->CFE 0.548),
+	// nonsense queries start at 0.601 (zzzzzz). One-hundredth margin each side; recalibrate
+	// from docs/search-eval.py columns + three nonsense queries after any model or doc
+	// change, or when "nada parecido" fires on a query that should hit.
 	trgmCutoff = 0.65
-	vecCutoff  = 0.70
+	vecCutoff  = 0.59
 )
 
 // Search returns the 5 expenses closest to text, nearest first. mode is the
