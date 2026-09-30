@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"finbox/internal/embed"
+	"finbox/internal/pipeline"
 	"finbox/internal/store"
 )
 
@@ -174,7 +175,7 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 	if code := run([]string{"finbox", "reembed", "--dry-run"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar") ||
+	if !strings.Contains(out.String(), txnID[:8]+" · walmart") || !strings.Contains(out.String(), "1 gastos por indexar (1 esperan línea") ||
 		!strings.Contains(out.String(), "0 productos por indexar") {
 		t.Fatalf("dry-run output:\n%s", out.String())
 	}
@@ -229,6 +230,16 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
+	errb.Reset()
+	// an indexed doc with no search line is still stale: the deploy must ask for one
+	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 2 {
+		t.Fatalf("vector but no line: exit %d, want 2 (out %q)", code, out.String())
+	}
+	if err := s.UpsertSearchLine(ctx, docs[0].ID, pipeline.LineKey(docs[0].Base), "", "m"); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errb.Reset()
 	if code := run([]string{"finbox", "reembed"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "0 vectores indexados") {
 		t.Fatalf("no-op reembed: exit %d, out %q", code, out.String())
 	}

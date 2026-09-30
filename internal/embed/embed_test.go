@@ -57,3 +57,52 @@ func TestEmbedCountMismatchAndHTTPError(t *testing.T) {
 		t.Error("401 must be an error")
 	}
 }
+
+func TestSearchLineRequestAndParse(t *testing.T) {
+	var body string
+	calls := 0
+	content := `{\"search_line\":\"pañales de huggies\"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"` + content + `"}}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{APIKey: "sk-test", BaseURL: srv.URL + "/", ChatModel: "gpt-test"}
+	line, err := c.SearchLine(context.Background(), "chedraui · super · godonites panal med 11 un")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line != "pañales de huggies" {
+		t.Fatalf("line = %q", line)
+	}
+	for _, want := range []string{`"model":"gpt-test"`, `"temperature":0`, `"response_format"`, `json_object`,
+		"godonites panal med 11 un", lineShots[0].doc} {
+		if !strings.Contains(body, want) {
+			t.Errorf("request lacks %s: %s", want, body)
+		}
+	}
+
+	off := &Client{APIKey: "sk-test", BaseURL: srv.URL + "/"}
+	if line, err := off.SearchLine(context.Background(), "x"); line != "" || err != nil || calls != 1 {
+		t.Fatalf("ChatModel \"\": %q, err %v, %d calls", line, err, calls)
+	}
+	content = `{\"otra_cosa\":\"x\"}`
+	if _, err := c.SearchLine(context.Background(), "x"); err == nil {
+		t.Error("a response without search_line must be an error")
+	}
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer bad.Close()
+	c.BaseURL = bad.URL + "/"
+	if _, err := c.SearchLine(context.Background(), "x"); err == nil {
+		t.Error("500 must be an error")
+	}
+}
