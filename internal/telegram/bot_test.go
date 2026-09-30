@@ -31,6 +31,7 @@ type fakeAPI struct {
 	nextMsg   int64
 	file      []byte
 	deleteErr error
+	copyErr   error
 }
 
 func (f *fakeAPI) GetUpdates(context.Context, int64, int) ([]Update, error) { return nil, nil }
@@ -53,6 +54,12 @@ func (f *fakeAPI) DeleteMessage(_ context.Context, chat, msgID int64) error {
 }
 func (f *fakeAPI) GetFile(_ context.Context, id string) (File, error) {
 	return File{FileID: id, FilePath: "photos/x.jpg", FileSize: int64(len(f.file))}, nil
+}
+
+// CopyMessage records fromChatID in chat and the copied message in msgID.
+func (f *fakeAPI) CopyMessage(_ context.Context, chat, fromChat, msgID int64) error {
+	f.calls = append(f.calls, call{method: "copy", chat: chat, msgID: msgID, text: fmt.Sprint(fromChat)})
+	return f.copyErr
 }
 func (f *fakeAPI) Download(context.Context, string) ([]byte, error)  { return f.file, nil }
 func (f *fakeAPI) SetMyCommands(context.Context, []BotCommand) error { return nil }
@@ -736,5 +743,73 @@ func TestSearchVecFailsBackToTrigram(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "search vec failed") {
 		t.Fatalf("log = %q", logs.String())
+	}
+}
+
+// TestSearchShowsReceiptButton: a /search row backed by a receipt gets a
+// ticket button that re-sends the original photo; a manual row gets none.
+func TestSearchShowsReceiptButton(t *testing.T) {
+	b, api, st := newBot(t, okExtractor{})
+	ctx := context.Background()
+	vec := make([]float64, 512)
+	vec[0] = 1
+	index := func(txnID, doc string) {
+		t.Helper()
+		if err := st.UpsertEmbedding(ctx, txnID, "m", store.DocHash(doc), doc, vec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := cardOf(t, b, st, 90) // photo flow: tg_message_id = 900, tg_chat_id = 111
+	b.HandleUpdate(ctx, cbUpdate(91, "c|"+rec.ID, rec.TgCardMessageID))
+	shot, err := st.GetActiveTxnForReceipt(ctx, rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index(shot.ID, "walmart · super · cafe")
+	manual, err := st.AddTransaction(ctx, store.NewTransaction{
+		OccurredOn: time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC),
+		Merchant:   "Walmart Express", AmountMinor: 12300, Currency: "MXN", Source: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	index(manual.ID, "walmart express · super")
+
+	b.HandleUpdate(ctx, textUpdate(92, "/search walmart"))
+	kb := api.last().kb
+	if kb == nil || len(*kb) != 2 {
+		t.Fatalf("keyboard = %+v, want one ticket row + close", kb)
+	}
+	want := Button{Text: fmt.Sprintf(messages.ReceiptButton, shot.ShortID), CallbackData: "t|" + shot.ID}
+	if len((*kb)[0]) != 1 || (*kb)[0][0] != want {
+		t.Fatalf("ticket row = %+v, want only %+v", (*kb)[0], want)
+	}
+	if (*kb)[1][0].Text != messages.BtnClose {
+		t.Fatalf("last row = %+v, want close", (*kb)[1])
+	}
+
+	from := len(api.calls)
+	b.HandleUpdate(ctx, cbUpdate(93, "t|"+shot.ID, 999))
+	copies := callsOf(api, from, "copy")
+	if len(copies) != 1 || copies[0].chat != 111 || copies[0].msgID != rec.TgMessageID || copies[0].text != "111" {
+		t.Fatalf("copies = %+v, want the original message re-sent", copies)
+	}
+	if len(callsOf(api, from, "answer")) != 1 {
+		t.Fatalf("callback not acked: %+v", api.calls[from:])
+	}
+
+	api.copyErr = fmt.Errorf("message to copy not found")
+	b.HandleUpdate(ctx, cbUpdate(94, "t|"+shot.ID, 999))
+	if last := api.last(); last.text != messages.ReceiptGone {
+		t.Fatalf("copy failure reply = %q", last.text)
+	}
+	api.copyErr = nil
+
+	from = len(api.calls)
+	b.HandleUpdate(ctx, cbUpdate(95, "t|"+manual.ID, 999))
+	if last := api.last(); last.text != messages.ReceiptGone {
+		t.Fatalf("manual row reply = %q", last.text)
+	}
+	if got := callsOf(api, from, "copy"); len(got) != 0 {
+		t.Fatalf("manual row must not copy anything: %+v", got)
 	}
 }

@@ -104,13 +104,16 @@ Mándame la <b>foto de un ticket</b> y te devuelvo el resumen para confirmar con
 🏷 categorías: super, restaurantes, hogar, servicios, transporte, salud, educacion, entretenimiento, ropa, otros
 📸 JPEG, PNG, WebP o PDF · máx. 20 MB
 🍏 si tu iPhone los guarda como HEIC y quieres mandarlos como archivo, un camino es Ajustes → Cámara → Formatos → <i>Más compatible</i>`
-	BtnUndo     = "↩️ Deshacer"
-	BtnConfirm  = "✅ Confirmar"
-	BtnDiscard  = "❌ Descartar"
-	BtnRetry    = "🔄 Reintentar"
-	BtnClose    = "❌ Cerrar"
-	ListClosed  = "🧾 lista cerrada"
-	ListCapNote = "máx. 50 — usa <code>finbox list</code> para más"
+	BtnUndo    = "↩️ Deshacer"
+	BtnConfirm = "✅ Confirmar"
+	BtnDiscard = "❌ Descartar"
+	BtnRetry   = "🔄 Reintentar"
+	BtnClose   = "❌ Cerrar"
+	// ReceiptButton labels one /search row's ticket button: the short id.
+	ReceiptButton = "🧾 %s"
+	ReceiptGone   = "no encuentro la foto original de ese ticket"
+	ListClosed    = "🧾 lista cerrada"
+	ListCapNote   = "máx. 50 — usa <code>finbox list</code> para más"
 )
 
 // CategoryLabels holds the es-MX names that differ from the slug; the rest
