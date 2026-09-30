@@ -575,34 +575,26 @@ func (b *Bot) handleAdd(ctx context.Context, chat int64, text string, now time.T
 	b.embed(ctx, row.ID)
 }
 
-// searchCutoff trims the sorted trigram hits from the tail: anything farther is
-// "nada parecido". On the 2026-09-29 eval true hits sit at 0.0–0.45 and noise at
-// 0.5–0.9; 0.65 drops the noise tail and costs a few long-vs-long "parecido a" hits.
-// ponytail: recalibrate from the eval's worst-expected vs best-non-expected distance
-// columns after any BuildDoc change, or when "nada parecido" fires on a query that should hit.
-const searchCutoff = 0.65
-
 func (b *Bot) handleSearch(ctx context.Context, chat int64, line string) {
 	if line == "" {
 		b.send(ctx, chat, messages.SearchHelp)
 		return
 	}
-	// Trigrams, not vectors: on the 2026-09-29 eval (28 queries, prod dump) vectors
-	// scored recall@5 0.69–0.71 vs trigram 0.65, under the 0.80 / +0.15 bar. The
-	// Embedder still indexes doc + vector on save so `finbox search --mode vec`
-	// keeps measuring; flip the nil here when a doc format clears the bar.
-	hits, err := command.Search(ctx, b.d.Store, nil, line)
+	// Hybrid holds every cutoff, so there is nothing to trim here: an empty
+	// result is "nada parecido".
+	hits, err := command.Search(ctx, b.d.Store, b.d.Embedder, "hybrid", line)
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrAmbiguous) {
 		b.send(ctx, chat, fmt.Sprintf(messages.SearchNoSuchExpense,
 			html.EscapeString(strings.TrimPrefix(store.Fold(line), "parecido a "))))
 		return
 	}
+	if err != nil && b.d.Embedder != nil { // OpenAI down: answer with trigrams alone
+		b.d.Log.Warn("search vec failed, trigram fallback", "err", err)
+		hits, err = command.Search(ctx, b.d.Store, nil, "hybrid", line)
+	}
 	if err != nil {
 		b.send(ctx, chat, html.EscapeString(err.Error()))
 		return
-	}
-	for len(hits) > 0 && hits[len(hits)-1].Distance > searchCutoff {
-		hits = hits[:len(hits)-1]
 	}
 	if len(hits) == 0 {
 		b.sendKB(ctx, chat, fmt.Sprintf(messages.SearchNothing, html.EscapeString(line)), closeKB)

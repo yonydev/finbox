@@ -107,11 +107,15 @@ func (s *Store) UpsertEmbedding(ctx context.Context, txnID, model, hash, doc str
 	return err
 }
 
-// Hit is a search result; Distance is lower-is-closer in both modes (cosine
-// distance for vectors, 1 - word_similarity for trigrams).
+// Hit is a search result; Distance is lower-is-closer in every mode (cosine
+// distance for vectors, 1 - word_similarity for trigrams), and in hybrid it is
+// the distance of the list that found the hit, trigram preferred. TrgmRank and
+// VecRank are 1-based positions in each list, 0 when the hit is not in it; a
+// single mode fills only its own rank.
 type Hit struct {
 	TxnRow
-	Distance float64
+	Distance          float64
+	TrgmRank, VecRank int
 }
 
 // vecSearchSQL takes the query vector from a cte so both callers share the

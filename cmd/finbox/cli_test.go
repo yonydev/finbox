@@ -205,12 +205,17 @@ func TestCLIReembedDryRunAndSearchTrgm(t *testing.T) {
 	if hits[0]["short_id"] != txnID[:8] || hits[0]["distance"].(float64) >= 1 {
 		t.Fatalf("hit = %+v", hits[0])
 	}
-	out.Reset()
-	if code := run([]string{"finbox", "search", "--mode", "vec", "walmart"}, &out, &errb); code != 2 {
-		t.Fatalf("vec without a key: exit %d, want 2 (stderr %s)", code, errb.String())
+	if hits[0]["trgm_rank"].(float64) != 1 || hits[0]["vec_rank"].(float64) != 0 {
+		t.Fatalf("ranks = %+v", hits[0])
 	}
 	out.Reset()
-	errb.Reset()
+	for _, mode := range []string{"vec", "hybrid"} { // both spend an API call
+		if code := run([]string{"finbox", "search", "--mode", mode, "walmart"}, &out, &errb); code != 2 {
+			t.Fatalf("%s without a key: exit %d, want 2 (stderr %s)", mode, code, errb.String())
+		}
+		out.Reset()
+		errb.Reset()
+	}
 	if code := run([]string{"finbox", "search", "--mode", "trgm"}, &out, &errb); code != 2 {
 		t.Fatalf("empty query: exit %d, want 2", code)
 	}

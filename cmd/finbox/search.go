@@ -16,49 +16,52 @@ import (
 type hitJSON struct {
 	txnJSON
 	Distance float64 `json:"distance"`
+	TrgmRank int     `json:"trgm_rank"`
+	VecRank  int     `json:"vec_rank"`
 }
 
 // cmdSearch prints the 5 closest expenses, nearest first, with their raw
-// distance. It never applies the bot's cutoff: the eval must see the whole
-// top-5. trgm is what the bot ships; vec spends one API call and exists to keep measuring.
+// distance and their rank in each list. It never filters beyond what Search
+// does, so --mode hybrid is exactly what the bot answers; trgm and vec print
+// the untouched top-5 the eval reads the distance spreads from.
 func cmdSearch(argv []string, stdout, stderr io.Writer) int {
 	fsx := flag.NewFlagSet("search", flag.ContinueOnError)
-	mode := fsx.String("mode", "trgm", "trgm (lo que usa el bot) | vec (embebe la consulta con OpenAI)")
+	mode := fsx.String("mode", "hybrid", "hybrid (lo que usa el bot) | trgm | vec")
 	asJSON := fsx.Bool("json", false, "salida JSON")
-	const usage = "uso: finbox search [--mode vec|trgm] [--json] <texto…>"
+	const usage = "uso: finbox search [--mode hybrid|trgm|vec] [--json] <texto…>"
 	setUsage(fsx, usage)
 	if ok, code := parseFlags(fsx, argv, stdout, stderr); !ok {
 		return code
 	}
 	query := strings.Join(fsx.Args(), " ")
-	if query == "" || (*mode != "vec" && *mode != "trgm") {
+	if query == "" || (*mode != "vec" && *mode != "trgm" && *mode != "hybrid") {
 		cliErr(stderr, *asJSON, usage)
 		return exitUsage
 	}
 	return withStore(stderr, *asJSON, func(e cliEnv) int {
 		var emb *embed.Client
-		if *mode == "vec" {
+		if *mode != "trgm" {
 			if e.cfg.OpenAIKey == "" {
 				cliErr(stderr, *asJSON, "falta OPENAI_API_KEY")
 				return exitUsage
 			}
 			emb = &embed.Client{APIKey: e.cfg.OpenAIKey}
 		}
-		hits, err := command.Search(e.ctx, e.st, emb, query)
+		hits, err := command.Search(e.ctx, e.st, emb, *mode, query)
 		if err != nil {
 			return mapErr(stderr, *asJSON, err)
 		}
 		if *asJSON {
 			out := make([]hitJSON, 0, len(hits))
 			for _, h := range hits {
-				out = append(out, hitJSON{toJSON(h.TxnRow), h.Distance})
+				out = append(out, hitJSON{toJSON(h.TxnRow), h.Distance, h.TrgmRank, h.VecRank})
 			}
 			json.NewEncoder(stdout).Encode(out)
 			return exitOK
 		}
 		for _, h := range hits {
-			fmt.Fprintf(stdout, "%.3f · %s · %s · %s · %s\n", h.Distance, h.ShortID,
-				h.OccurredOn.Format("2006-01-02"), h.MerchantCanon, money.Format(h.AmountMinor, h.Currency))
+			fmt.Fprintf(stdout, "%.3f · t%d v%d · %s · %s · %s · %s\n", h.Distance, h.TrgmRank, h.VecRank,
+				h.ShortID, h.OccurredOn.Format("2006-01-02"), h.MerchantCanon, money.Format(h.AmountMinor, h.Currency))
 		}
 		return exitOK
 	})
