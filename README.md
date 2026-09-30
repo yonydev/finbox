@@ -111,7 +111,7 @@ Replying to a **pending** card edits the draft in place and keeps the buttons, s
 
 Bot commands:
 
-- `/search <words>` — the five expenses closest to what you bought (`/search pañales`); `/search parecido a <id>` ranks by an expense you already have
+- `/search <words>` — the five expenses closest to what you bought (`/search pañales`), matched by trigrams and vectors together; `/search parecido a <id>` ranks by an expense you already have
 - `/list [N]` — last N confirmed expenses (default 10)
 - `/month [token]` — total and count for a month (e.g. `/month aug`), reported per currency
 - `/pending` — receipts still awaiting confirmation or that failed extraction
@@ -127,11 +127,11 @@ finbox void <id>
 finbox reprocess <id>                       # re-extract a pending/failed/discarded receipt
 finbox extract ticket.jpg --json --today 2026-09-15   # one local file, no database
 finbox rerule --dry-run                     # recompute canonical merchant names, show the diff
-finbox search --json --mode trgm pañales    # five closest expenses, each with its distance
+finbox search --json --mode hybrid pañales  # five closest expenses, each with its distance and its rank per list
 finbox reembed --dry-run                    # print the text that would be indexed, call nothing
 ```
 
-**What search indexes.** One short line per expense: the display merchant name, the category label and the item names — never amounts, dates or ids. The bot matches your query against that line with Postgres trigrams (`pg_trgm`), so typos and partial words work but synonyms do not, and a search never leaves the machine. The same line is also embedded with OpenAI when an expense is saved or corrected, so `finbox search --mode vec` can keep measuring vector search against the trigram baseline; on the current corpus vectors did not beat it enough to ship. `finbox reembed` is idempotent and runs on every deploy; the bot also indexes each expense right after it is saved or corrected.
+**What search indexes.** One short line per expense — the display merchant name, the category label and the item names — plus one line per receipt item, so a long ticket stops burying the thing you bought. Never amounts, dates or ids. A query is matched two ways at once and the two rankings are fused: Postgres trigrams (`pg_trgm`) over the expense line, which catch typos and partial words, and OpenAI embeddings over both kinds of line, which catch synonyms and brands. Only the query text leaves the machine, and only for the vector half; `--mode trgm` answers without any call. `finbox reembed` is idempotent and runs on every deploy; the bot also indexes each expense and its items right after it is saved or corrected.
 
 Every read/write CLI command accepts `--json` for scripting, with stable exit codes (`0` ok, `1` runtime error, `2` usage error, `3` not found/ambiguous id). `<id>` can be a full UUID or its 8-character short prefix, same one shown in `/list` and `finbox list`.
 
